@@ -1,6 +1,7 @@
 import { MAX_NAME_LENGTH, MAX_ROOM_NAME_LENGTH } from '@bluff/protocol';
 import { saveName, socket, store } from '../net.js';
 import { h, type Screen } from './dom.js';
+import { settingsButton } from './settings-panel.js';
 
 const STATUS_TEXT = { waiting: 'open', full: 'full', playing: 'in progress', closed: 'closed' } as const;
 
@@ -39,6 +40,7 @@ export class LobbyScreen implements Screen {
     this.el = h(
       'div',
       { class: 'panel lobby' },
+      settingsButton('corner'),
       h('h1', { class: 'title' }, h('span', { class: 'title-false' }, 'FALSE'), ' ', h('span', { class: 'title-alarm' }, 'ALARM')),
       h('p', { class: 'tagline' }, 'Lie well. Look closely. Call it.'),
       h('label', { class: 'field' }, h('span', {}, 'Your name'), this.nameInput),

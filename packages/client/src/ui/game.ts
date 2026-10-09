@@ -3,6 +3,7 @@ import { socket, store } from '../net.js';
 import type { TableScene } from '../scene/table-scene.js';
 import { SUIT_SYMBOL } from '../scene/cards.js';
 import { cardFace, claim, h, present, sortHand, type Screen } from './dom.js';
+import { settingsButton } from './settings-panel.js';
 import type { Feed, FeedItem } from './feed.js';
 
 /** Cards per row in your hand before it wraps to a new row. */
@@ -185,6 +186,7 @@ export class GameScreen implements Screen {
     this.top.replaceChildren(...present(
       h('span', { title: 'Face-down cards in the pool' }, `▣ ${v.poolCount}`),
       v.roundRank ? h('span', { class: 'latest', title: "This round's rank" }, v.roundRank) : null,
+      settingsButton(),
       h(
         'button',
         {

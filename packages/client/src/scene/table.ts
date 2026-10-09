@@ -123,16 +123,17 @@ export class Table {
     this.group.add(this.top, this.rim);
   }
 
-  /** The lamp stutters, as when a bluff is called. */
-  async flicker(ms: number): Promise<void> {
+  /** The lamp stutters, as when a bluff is called. `strength` below 1 keeps the dips shallow. */
+  async flicker(ms: number, strength = 1): Promise<void> {
     if (this.flickering) return;
     this.flickering = true;
     const bulb = this.bulb.material as MeshBasicMaterial;
+    const low = 1 - 0.92 * strength;
     await tween(
       ms,
       (k) => {
         const on = k >= 1 || Math.random() > 0.45;
-        this.spot.intensity = on ? LAMP_INTENSITY * (0.7 + Math.random() * 0.3) : LAMP_INTENSITY * 0.08;
+        this.spot.intensity = on ? LAMP_INTENSITY * (0.7 + Math.random() * 0.3) : LAMP_INTENSITY * low;
         bulb.color.setHex(on ? 0xfff0c0 : 0x4a3a20);
       },
       linear,

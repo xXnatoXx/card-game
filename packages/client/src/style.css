@@ -54,6 +54,11 @@ body {
   background: #0c0d0b;
 }
 
+/* The CRT overlay can be turned off in Settings. */
+#frame.no-crt::after {
+  display: none;
+}
+
 /* An old CRT over everything, HUD included: scanlines, darker corners, and a faint flicker. */
 #frame::after {
   content: '';
@@ -198,6 +203,139 @@ button.danger {
 
 button.danger:hover:not(:disabled) {
   background: #b2362a;
+}
+
+/* --- Settings ---------------------------------------------------------------- */
+
+.gear {
+  padding: 0 8px;
+  font-size: 22px;
+  color: var(--dim);
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.gear:hover:not(:disabled) {
+  color: var(--lamp-light);
+  background: transparent;
+}
+
+.gear.corner {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+}
+
+.head-buttons {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.settings-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+  pointer-events: auto;
+}
+
+.settings {
+  width: 540px;
+  max-height: 680px;
+  overflow: auto;
+}
+
+.settings-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.setting {
+  display: grid;
+  grid-template-columns: 110px 1fr 56px;
+  gap: 12px;
+  align-items: center;
+  margin: 8px 0;
+}
+
+.setting-value {
+  text-align: right;
+  color: var(--lamp-light);
+}
+
+/* Chunky pixel sliders. */
+input[type='range'] {
+  appearance: none;
+  height: 12px;
+  padding: 0;
+  background: var(--ink);
+  border: 2px solid var(--felt-light);
+  cursor: pointer;
+}
+
+input[type='range']::-webkit-slider-thumb {
+  appearance: none;
+  width: 14px;
+  height: 24px;
+  background: var(--lamp-light);
+  border: 2px solid var(--black);
+  box-shadow: 2px 2px 0 var(--black);
+}
+
+input[type='range']::-moz-range-thumb {
+  width: 12px;
+  height: 22px;
+  border-radius: 0;
+  background: var(--lamp-light);
+  border: 2px solid var(--black);
+  box-shadow: 2px 2px 0 var(--black);
+}
+
+.setting-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  margin: 3px 0;
+  padding: 2px 6px;
+  text-align: left;
+  color: var(--dim);
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.setting-toggle.on {
+  color: var(--pale);
+}
+
+.setting-toggle:hover:not(:disabled) {
+  background: rgba(37, 52, 32, 0.6);
+}
+
+.setting-toggle .box {
+  color: var(--lamp-light);
+}
+
+.setting-hint {
+  width: 100%;
+  padding-left: 22px;
+  font-size: 16px;
+  color: var(--dim);
+}
+
+.settings-note {
+  margin: 10px 0 0;
+  font-size: 16px;
+  text-align: right;
+  color: var(--felt-light);
 }
 
 /* A button that is "on", like Sit back while you're leaning in to inspect. */

@@ -4,6 +4,7 @@ import { Avatar, AVATAR_Y, HEAD_HEIGHT } from './avatars.js';
 import { CARD_T, makeCard, showFace } from './cards.js';
 import type { Stage } from './stage.js';
 import { Table } from './table.js';
+import { sound } from '../audio/sound.js';
 import { moveTo, setTweenSpeed, wait } from './tween.js';
 
 interface PoolPlay {
@@ -39,6 +40,8 @@ export class TableScene {
   /** Bumped by every play, call and round end, so a delayed inspection can tell it's stale. */
   private moment = 0;
   private readonly mouse = new Vector2();
+  /** The camera follows the mouse a little (a setting). */
+  mouseLook = true;
 
   private queue: Promise<void> = Promise.resolve();
   private pending = 0;
@@ -107,7 +110,10 @@ export class TableScene {
 
   setTurn(seat: number | null): void {
     // Your turn arrives with one heavy heartbeat.
-    if (seat !== null && seat === this.mySeat && this.turn !== seat) this.stage.effects.heartbeat();
+    if (seat !== null && seat === this.mySeat && this.turn !== seat) {
+      this.stage.effects.heartbeat();
+      sound.heartbeat(1);
+    }
     this.turn = seat;
     this.avatars.forEach((a, i) => a?.setLit(i === seat));
   }
@@ -240,6 +246,7 @@ export class TableScene {
           const { pos, quat } = this.slot(play, i, count);
           card.position.copy(from);
           this.stage.scene.add(card);
+          sound.cardSlide((i * 70) / 1000);
           return moveTo(card, { to: pos, quaternion: quat, ms: 420, delay: i * 70, arc: 0.25 });
         }),
       );
@@ -269,6 +276,7 @@ export class TableScene {
       this.leanLook.copy(play.center).setY(-0.3);
       this.leanPos.copy(play.center).addScaledVector(toMe, 0.75).setY(0.85);
       this.leanTarget = 1;
+      sound.whoosh();
     });
   }
 
@@ -290,6 +298,7 @@ export class TableScene {
 
   otherInspected(seat: number): void {
     void this.avatars[seat]?.lean();
+    sound.whoosh(0.35);
   }
 
   /** The lamp flickers, the called cards flip face up, then the pool goes to whoever lost the call. */
@@ -299,7 +308,9 @@ export class TableScene {
     this.enqueue(async () => {
       const fx = this.stage.effects;
       const play = this.plays.at(-1) ?? this.newPlay(msg.player, 0);
-      void this.table.flicker(900);
+      void this.table.flicker(900, fx.intensity);
+      sound.zap();
+      sound.crackle(900);
       fx.glitch(0.9);
       fx.shakeScreen(0.05);
 
@@ -324,20 +335,30 @@ export class TableScene {
         play.cards.map((card, i) => {
           const face = msg.cards[i];
           if (face) showFace(card, face);
+          sound.cardFlip((i * 110) / 1000);
           const flipped = card.quaternion.clone().multiply(new Quaternion().setFromAxisAngle(Z_AXIS, Math.PI));
           return moveTo(card, { to: card.position.clone(), quaternion: flipped, ms: 380, delay: i * 110, arc: 0.2 });
         }),
       );
 
       // Caught: the alarm goes off. A false alarm just stutters. Losing the call breaks your screen.
-      if (msg.wasBluff) fx.alarm(2800);
-      else fx.glitch(0.5);
-      if (msg.loser === this.mySeat) fx.breakScreen();
+      if (msg.wasBluff) {
+        fx.alarm(2800);
+        sound.alarm(2800);
+      } else {
+        fx.glitch(0.5);
+        sound.falseAlarm();
+      }
+      if (msg.loser === this.mySeat) {
+        fx.breakScreen();
+        sound.glassBreak();
+      }
 
       const winner = msg.loser === msg.caller ? msg.player : msg.caller;
       this.avatars[msg.loser]?.react('gesture-negative');
       this.avatars[winner]?.react('gesture-positive');
       await wait(2000);
+      sound.sweep();
       await this.sweep(this.handSpot(msg.loser), 0.15);
     });
   }
@@ -348,6 +369,8 @@ export class TableScene {
     this.endInspect();
     this.enqueue(async () => {
       this.stage.effects.darken();
+      sound.sweep();
+      sound.darkness();
       const cards = this.plays.flatMap((p) => p.cards);
       await Promise.all(
         cards.map((card, i) => {
@@ -368,9 +391,12 @@ export class TableScene {
       const fx = this.stage.effects;
       if (winner === this.mySeat) {
         fx.flash(1);
+        sound.win();
       } else {
         fx.breakScreen();
         fx.darken();
+        sound.glassBreak();
+        sound.lose();
       }
     });
   }
@@ -426,8 +452,10 @@ export class TableScene {
     const pos = new Vector3(Math.sin(t * 0.4) * 0.03, 1.15 + Math.sin(t * 0.7) * 0.015, r + 0.9);
     const look = new Vector3(0, 0.15, -0.6);
     // Look around a little with the mouse.
-    look.sub(pos).applyAxisAngle(Y_AXIS, -this.mouse.x * 0.35).add(pos);
-    look.y -= this.mouse.y * 0.5;
+    if (this.mouseLook) {
+      look.sub(pos).applyAxisAngle(Y_AXIS, -this.mouse.x * 0.35).add(pos);
+      look.y -= this.mouse.y * 0.5;
+    }
     // Ease in and out of an inspection.
     this.lean += (this.leanTarget - this.lean) * Math.min(1, dt * 5);
     if (Math.abs(this.leanTarget - this.lean) < 0.002) this.lean = this.leanTarget;

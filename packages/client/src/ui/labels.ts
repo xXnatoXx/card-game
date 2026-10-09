@@ -1,3 +1,4 @@
+import { sound } from '../audio/sound.js';
 import { store } from '../net.js';
 import type { Stage } from '../scene/stage.js';
 import type { TableScene } from '../scene/table-scene.js';
@@ -109,6 +110,8 @@ export class Labels {
     const elapsed = now - line.start;
     const shown = Math.min(line.text.length, Math.floor(elapsed / CHAR_MS));
     if (shown !== line.shown) {
+      // A typewriter key for each new letter.
+      if (shown > line.shown && line.text[shown - 1]?.trim()) sound.tick();
       line.shown = shown;
       tag.bubble.replaceChildren(line.text.slice(0, shown), h('span', { class: 'caret' }));
     }

@@ -25,6 +25,8 @@ export class Effects {
   private shakeAmp = 0;
   private danger = 0;
   private now = 0;
+  /** 1 normally; lower with "reduced screen effects" (less shake, flashing, glitching). */
+  intensity = 1;
   private readonly baseExposure: number;
   private readonly crackCanvas = document.createElement('canvas');
   private readonly crackTexture: CanvasTexture;
@@ -98,7 +100,9 @@ export class Effects {
     this.pulseLevel = Math.max(0, this.pulseLevel - dt * 1.6);
     this.flashLevel = Math.max(0, this.flashLevel - dt * 4);
     this.shakeAmp = Math.max(0, this.shakeAmp - dt * 0.4);
-    this.shake.set((Math.random() - 0.5) * 2 * this.shakeAmp, (Math.random() - 0.5) * this.shakeAmp, 0);
+    const k = this.intensity;
+    const amp = this.shakeAmp * k;
+    this.shake.set((Math.random() - 0.5) * 2 * amp, (Math.random() - 0.5) * amp, 0);
 
     // A racing double heartbeat: thump-thump, pause.
     const beatT = t % 0.85;
@@ -106,13 +110,13 @@ export class Effects {
 
     const u = this.uniforms;
     u.time!.value = t % 1000;
-    u.glitch!.value = this.glitchLevel;
+    u.glitch!.value = this.glitchLevel * k;
     u.crack!.value = this.crackLevel;
-    u.tintAmount!.value = this.alarmLevel * 0.75;
+    u.tintAmount!.value = this.alarmLevel * 0.75 * (0.3 + 0.7 * k);
     u.vignette!.value = 0.6 + this.pulseLevel * 0.35 + this.danger * 0.15;
-    u.danger!.value = this.danger * (0.3 + 0.7 * Math.min(1, beat));
+    u.danger!.value = this.danger * (0.3 + 0.7 * Math.min(1, beat)) * (0.5 + 0.5 * k);
     u.exposure!.value = this.baseExposure * (1 - 0.6 * this.darkLevel);
-    u.flash!.value = this.flashLevel * 0.35;
+    u.flash!.value = this.flashLevel * 0.35 * k;
   }
 }
 

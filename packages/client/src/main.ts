@@ -1,7 +1,9 @@
 import '@fontsource/vt323';
 import './style.css';
+import { sound } from './audio/sound.js';
 import { direct } from './director.js';
 import { store, subscribe } from './net.js';
+import { onSettings } from './settings.js';
 import { Stage } from './scene/stage.js';
 import { TableScene } from './scene/table-scene.js';
 import { installCardDither } from './ui/dither.js';
@@ -12,18 +14,40 @@ import { GameScreen } from './ui/game.js';
 import { Labels } from './ui/labels.js';
 import { LobbyScreen } from './ui/lobby.js';
 import { RoomScreen } from './ui/room.js';
+import { settingsPanel } from './ui/settings-panel.js';
 
 installCardDither();
 fitUiToFrame(document.getElementById('frame')!);
 const stage = new Stage(document.getElementById('stage') as HTMLCanvasElement);
 const scene = new TableScene(stage);
 
-// The last 8 seconds of your turn: the screen edges pulse red with a racing heartbeat.
-stage.onFrame(() => {
+// The last 8 seconds of your turn: the screen edges pulse red with a racing heartbeat you can hear.
+stage.onFrame((_dt, time) => {
   const deadline = store.turnDeadline;
   const left = store.game?.view.canPlay && deadline !== null ? deadline - Date.now() : Infinity;
-  stage.effects.setDanger(left < 8000 ? 1 - Math.max(0, left) / 8000 : 0);
+  const danger = left < 8000 ? 1 - Math.max(0, left) / 8000 : 0;
+  stage.effects.setDanger(danger);
+  sound.setDanger(danger, time);
 });
+
+// Apply the player's settings now and whenever they change.
+onSettings((s) => {
+  sound.setVolumes(s);
+  document.getElementById('frame')!.classList.toggle('no-crt', !s.crt);
+  stage.effects.intensity = s.reducedEffects ? 0.3 : 1;
+  scene.mouseLook = s.mouseLook;
+});
+
+// Clicks: a soft tap for cards, a click for buttons.
+document.addEventListener(
+  'click',
+  (e) => {
+    const target = e.target as Element | null;
+    if (target?.closest('.hand .card, .staged .card')) sound.cardTap();
+    else if (target?.closest('button')) sound.click();
+  },
+  true,
+);
 const feed = new Feed();
 const ui = document.getElementById('ui')!;
 const labels = new Labels(document.getElementById('labels')!, scene, stage);
@@ -31,7 +55,7 @@ direct(scene, feed, (seat, text, tone) => labels.say(seat, text, tone));
 
 const toasts = h('div', { class: 'toasts' });
 const offline = h('div', { class: 'offline panel' }, 'Connecting to the table…');
-ui.append(toasts, offline);
+ui.append(toasts, offline, settingsPanel.el);
 
 function toast(text: string): void {
   const el = h('div', { class: 'toast' }, text);
@@ -42,6 +66,8 @@ function toast(text: string): void {
 /** After a game ends, the results stay up until the player goes back to the table. */
 let resultsOpen = false;
 let lastWinner: number | null = null;
+/** Whether a game was running at the last update, so a new one can start with a shuffle. */
+let wasPlaying = false;
 
 feed.on((item) => {
   if (item.kind === 'toast') toast(item.text);
@@ -60,6 +86,9 @@ function route(): void {
   }
   lastWinner = game?.view.winner ?? null;
   if (!room) resultsOpen = false;
+  const playing = !!game && game.view.winner === null;
+  if (playing && !wasPlaying) sound.shuffle();
+  wasPlaying = playing;
 
   const inGame = !!room && !!game && (room.status === 'playing' || resultsOpen);
   const next: Kind = !room ? 'lobby' : inGame ? 'game' : 'room';

@@ -1,6 +1,7 @@
 import { ANIMALS, MAX_ROOM_PLAYERS } from '@bluff/protocol';
 import { socket, store } from '../net.js';
 import { animalName, h, present, type Screen } from './dom.js';
+import { settingsButton } from './settings-panel.js';
 
 /** Waiting at the table: who's here, pick your animal, add bots, start. */
 export class RoomScreen implements Screen {
@@ -19,7 +20,12 @@ export class RoomScreen implements Screen {
         'div',
         { class: 'room-head' },
         h('h2', {}, room.name),
-        h('button', { class: 'quiet', onclick: () => socket.emit('room:leave') }, 'Leave'),
+        h(
+          'div',
+          { class: 'head-buttons' },
+          settingsButton(),
+          h('button', { class: 'quiet', onclick: () => socket.emit('room:leave') }, 'Leave'),
+        ),
       ),
       h(
         'p',

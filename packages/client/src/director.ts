@@ -1,4 +1,5 @@
 import type { Rank } from '@bluff/rules';
+import { sound } from './audio/sound.js';
 import { socket, store } from './net.js';
 import type { TableScene } from './scene/table-scene.js';
 import { claim } from './ui/dom.js';
@@ -38,6 +39,7 @@ export function direct(scene: TableScene, feed: Feed, say: Say): void {
 
   socket.on('turn:passed', (m) => {
     say(m.player, 'Pass.', 'quiet');
+    sound.pass();
     feed.emit({ kind: 'log', text: `${name(m.player)} passed` });
   });
 
