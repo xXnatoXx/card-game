@@ -1,0 +1,1267 @@
+:root {
+  --black: #050504;
+  --ink: #0f120d;
+  --felt-dark: #253420;
+  --felt: #34502a;
+  --felt-light: #4c6e34;
+  --moss: #6f8f45;
+  --wood: #2e1c14;
+  --rust: #8a5a2e;
+  --red: #9a2a1e;
+  --red-light: #e8786a;
+  --lamp: #c9a14a;
+  --lamp-light: #e8c86a;
+  --pale: #f2e6c4;
+  --dim: #b8b098;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--black);
+  color: var(--pale);
+  font-family: 'VT323', ui-monospace, monospace;
+  font-size: 22px;
+  line-height: 1.15;
+}
+
+/* The game is always 16:9: the biggest such box that fits the window, centred, black bars around it. */
+#frame {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  width: min(100vw, calc(100vh * 16 / 9));
+  height: min(100vh, calc(100vw * 9 / 16));
+  overflow: hidden;
+  background: #000;
+  /* A thin bezel, so the edge of the 16:9 picture is visible against the black bars. */
+  outline: 2px solid #1c2418;
+  box-shadow:
+    0 0 0 5px #070806,
+    0 0 0 7px #1a1f16,
+    0 0 40px 10px rgba(0, 0, 0, 0.9);
+}
+
+/* The bars around the frame: faintly lighter than the picture's own black, like a monitor's casing. */
+body {
+  background: #0c0d0b;
+}
+
+/* An old CRT over everything, HUD included: scanlines, darker corners, and a faint flicker. */
+#frame::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0) 0, rgba(0, 0, 0, 0) 2px, rgba(0, 0, 0, 0.2) 2px, rgba(0, 0, 0, 0.2) 3px),
+    radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 58%, rgba(0, 0, 0, 0.4) 100%);
+  animation: crt-flicker 7s infinite steps(1);
+}
+
+@keyframes crt-flicker {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  41% {
+    opacity: 0.85;
+  }
+  42% {
+    opacity: 1;
+  }
+  77% {
+    opacity: 0.9;
+  }
+  78% {
+    opacity: 1;
+  }
+}
+
+#stage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  image-rendering: pixelated;
+}
+
+/* The HUD is laid out at 1280x720 (see ui/frame.ts) and scaled to the frame. */
+#labels,
+#ui {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1280px;
+  height: 720px;
+  transform-origin: 0 0;
+  transform: scale(var(--ui-scale, 1));
+  pointer-events: none;
+}
+
+.hidden {
+  display: none !important;
+}
+
+h1,
+h2,
+h3 {
+  font-weight: normal;
+  margin: 0.3em 0;
+}
+
+h2 {
+  color: var(--lamp-light);
+  font-size: 34px;
+}
+
+h3 {
+  color: var(--lamp);
+  font-size: 26px;
+}
+
+.muted {
+  color: var(--dim);
+}
+
+.warn {
+  color: var(--red-light);
+}
+
+button,
+input {
+  font: inherit;
+  font-size: 22px;
+  color: var(--pale);
+}
+
+button {
+  background: var(--felt-dark);
+  border: 2px solid var(--moss);
+  padding: 2px 14px;
+  cursor: pointer;
+  box-shadow: 3px 3px 0 var(--black);
+}
+
+button:hover:not(:disabled) {
+  background: var(--felt);
+}
+
+button:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 var(--black);
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+button.primary {
+  background: var(--rust);
+  border-color: var(--lamp-light);
+}
+
+button.primary:hover:not(:disabled) {
+  background: #a06a36;
+}
+
+/* The BLUFF button throbs like an alarm waiting to be pulled. */
+button.danger {
+  background: var(--red);
+  border-color: var(--red-light);
+  animation: alarm-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes alarm-pulse {
+  0%,
+  100% {
+    box-shadow:
+      3px 3px 0 var(--black),
+      0 0 6px rgba(232, 80, 58, 0.35);
+  }
+  50% {
+    box-shadow:
+      3px 3px 0 var(--black),
+      0 0 18px 4px rgba(232, 80, 58, 0.75);
+  }
+}
+
+button.danger:hover:not(:disabled) {
+  background: #b2362a;
+}
+
+/* A button that is "on", like Sit back while you're leaning in to inspect. */
+button.active {
+  background: var(--lamp);
+  border-color: var(--lamp-light);
+  color: var(--black);
+}
+
+button.quiet {
+  background: transparent;
+  border-color: var(--felt-light);
+  box-shadow: none;
+}
+
+button.tiny {
+  padding: 0 8px;
+  font-size: 18px;
+  box-shadow: none;
+}
+
+input {
+  background: var(--ink);
+  border: 2px solid var(--felt-light);
+  padding: 3px 8px;
+  outline: none;
+}
+
+input:focus {
+  border-color: var(--lamp-light);
+}
+
+/* Panels: dithered grime (ui/dither.ts), a hard double border, and a shadow falling into the dark. */
+.panel {
+  pointer-events: auto;
+  background: rgba(8, 10, 6, 0.9) var(--panel-tex) repeat;
+  background-size: 96px 96px;
+  image-rendering: pixelated;
+  border: 2px solid var(--felt-light);
+  box-shadow:
+    0 0 0 2px var(--black),
+    inset 0 0 0 2px rgba(0, 0, 0, 0.55),
+    inset 0 0 40px rgba(0, 0, 0, 0.7),
+    6px 6px 0 var(--black),
+    0 0 40px rgba(0, 0, 0, 0.8);
+  padding: 14px 20px;
+}
+
+/* --- Lobby ---------------------------------------------------------------- */
+
+.lobby {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 600px;
+  max-height: 688px;
+  overflow: auto;
+}
+
+.title {
+  font-size: 84px;
+  letter-spacing: 6px;
+  text-align: center;
+  margin: 0;
+  line-height: 1;
+}
+
+.title-false {
+  color: var(--lamp-light);
+  text-shadow: 5px 5px 0 #3a1a0c;
+}
+
+/* "ALARM" is a failing red neon sign. */
+.title-alarm {
+  color: #e8503a;
+  text-shadow:
+    5px 5px 0 #2a0806,
+    0 0 18px rgba(232, 80, 58, 0.75);
+  animation: neon 4.3s infinite steps(1);
+}
+
+@keyframes neon {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  7% {
+    opacity: 0.25;
+  }
+  8% {
+    opacity: 1;
+  }
+  10% {
+    opacity: 0.45;
+  }
+  11% {
+    opacity: 1;
+  }
+  62% {
+    opacity: 1;
+  }
+  63% {
+    opacity: 0.15;
+  }
+  66% {
+    opacity: 1;
+  }
+}
+
+.tagline {
+  text-align: center;
+  color: var(--dim);
+  margin: 0 0 14px;
+}
+
+.field {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.field input {
+  flex: 1;
+  min-width: 0;
+}
+
+.rooms {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.room-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 4px 8px;
+  background: rgba(37, 52, 32, 0.4);
+}
+
+.room-row .room-host,
+.room-row .room-status {
+  color: var(--dim);
+}
+
+.room-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.empty {
+  color: var(--dim);
+}
+
+.create {
+  display: flex;
+  gap: 8px;
+}
+
+.create input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The x2 mode switch in the create form. */
+.mode-toggle {
+  white-space: nowrap;
+  color: var(--dim);
+  background: var(--ink);
+  border-color: var(--felt-light);
+}
+
+.mode-toggle.on {
+  color: var(--black);
+  background: var(--pale);
+  border-color: var(--pale);
+  filter: invert(1);
+}
+
+/* "x2" next to a table's name, in the lobby list and the waiting room. */
+.mode-tag {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 0 6px;
+  font-size: 17px;
+  line-height: 1.2;
+  color: var(--black);
+  background: var(--pale);
+  filter: invert(1);
+  vertical-align: middle;
+}
+
+.mode-note {
+  margin: 0 0 6px;
+  font-size: 18px;
+  color: var(--dim);
+}
+
+.build {
+  margin: 10px 0 0;
+  text-align: right;
+  font-size: 15px;
+  color: var(--felt-light);
+}
+
+/* --- Room ----------------------------------------------------------------- */
+
+.room {
+  position: absolute;
+  right: 16px;
+  top: 16px;
+  bottom: 16px;
+  width: 420px;
+  overflow: auto;
+}
+
+.room-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.members {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.members li {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 2px 6px;
+}
+
+.members li.me {
+  background: rgba(201, 161, 74, 0.15);
+}
+
+.animal-tag {
+  color: var(--lamp);
+  min-width: 90px;
+}
+
+.member-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.badge {
+  font-size: 17px;
+  border: 1px solid var(--felt-light);
+  padding: 0 5px;
+  color: var(--dim);
+}
+
+.badge.warn {
+  border-color: var(--red-light);
+}
+
+.animals {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 6px;
+}
+
+.animal {
+  font-size: 19px;
+  padding: 2px 4px;
+}
+
+.animal.chosen {
+  background: var(--rust);
+  border-color: var(--lamp-light);
+}
+
+.host-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+
+/* --- Game HUD ------------------------------------------------------------- */
+
+.game {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* A small, quiet indicator: pool size, the round's rank, and leave. */
+.hud-top {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-size: 18px;
+  color: var(--dim);
+  background: rgba(0, 0, 0, 0.35);
+  padding: 0 4px 0 10px;
+  pointer-events: auto;
+  opacity: 0.75;
+  transition: opacity 0.2s;
+}
+
+.hud-top:hover {
+  opacity: 1;
+}
+
+.hud-top .latest {
+  color: var(--lamp-light);
+}
+
+.hud-top button.tiny {
+  border-color: transparent;
+  background: transparent;
+  color: var(--dim);
+}
+
+/* Chat log: lines fade out on their own; hover to see the recent ones again. */
+.log {
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  width: 340px;
+  list-style: none;
+  margin: 0;
+  padding: 2px 6px;
+  font-size: 17px;
+  text-shadow: 2px 2px 0 var(--black);
+  pointer-events: auto;
+}
+
+.log li {
+  animation: log-fade 9s forwards;
+}
+
+.log li:last-child {
+  color: var(--lamp-light);
+}
+
+.log:hover {
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.log:hover li {
+  animation: none;
+  opacity: 0.9;
+}
+
+@keyframes log-fade {
+  0%,
+  65% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.banner {
+  z-index: 20;
+  position: absolute;
+  top: 34%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 46px;
+  color: var(--lamp-light);
+  text-shadow: 3px 3px 0 var(--black);
+  text-align: center;
+  opacity: 0;
+  transition: opacity 0.3s;
+  white-space: nowrap;
+}
+
+/* Banners stutter in like a bad signal. */
+.banner.show {
+  opacity: 1;
+  animation: banner-in 0.5s steps(5);
+}
+
+@keyframes banner-in {
+  0% {
+    opacity: 0;
+    letter-spacing: 16px;
+  }
+  40% {
+    opacity: 1;
+  }
+  60% {
+    opacity: 0.3;
+  }
+  100% {
+    opacity: 1;
+    letter-spacing: normal;
+  }
+}
+
+/* The verdict and the revealed cards at the top centre: no box, and never in the way of a click. */
+.reveal {
+  z-index: 20;
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 1248px;
+  text-align: center;
+  display: none;
+  pointer-events: none;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.9));
+}
+
+.reveal h3 {
+  font-size: 40px !important;
+  white-space: nowrap;
+  text-shadow:
+    3px 3px 0 var(--black),
+    0 0 16px rgba(0, 0, 0, 0.9);
+}
+
+/* While leaning in: the size of the whole pool, big, beside the close-up (which fills the top centre). */
+.inspect-info {
+  position: absolute;
+  top: 120px;
+  right: 56px;
+  text-align: right;
+  pointer-events: none;
+  z-index: 15;
+  text-shadow:
+    3px 3px 0 var(--black),
+    0 0 18px rgba(0, 0, 0, 0.95);
+  animation: banner-in 0.5s steps(5);
+}
+
+.inspect-count {
+  font-size: 96px;
+  line-height: 0.9;
+  color: var(--lamp-light);
+  text-shadow:
+    4px 4px 0 var(--black),
+    0 0 22px rgba(232, 200, 106, 0.55);
+}
+
+.inspect-label {
+  font-size: 26px;
+  color: var(--pale);
+  letter-spacing: 2px;
+}
+
+.inspect-latest {
+  margin-top: 4px;
+  font-size: 22px;
+  color: var(--dim);
+}
+
+/* "+1": cards that were hidden under others, i.e. a stacked bluff. */
+.stacked-chip {
+  align-self: center;
+  margin-left: 4px;
+  padding: 0 8px;
+  font-size: 26px;
+  color: var(--red-light);
+  background: rgba(10, 4, 3, 0.85);
+  border: 2px solid var(--red-light);
+  box-shadow: 0 0 12px rgba(232, 80, 58, 0.6);
+}
+
+.reveal.show {
+  display: block;
+}
+
+.reveal h3 {
+  font-size: 48px;
+  margin: 0;
+  line-height: 1;
+}
+
+.reveal .card {
+  width: 46px;
+  height: 66px;
+}
+
+.reveal .card .rank {
+  font-size: 22px;
+}
+
+.reveal .card .suit {
+  font-size: 16px;
+}
+
+.reveal .card .pip {
+  font-size: 26px;
+}
+
+/* CAUGHT! tears and jitters; FALSE ALARM flickers like the sign it's named after. */
+.reveal h3.caught {
+  color: var(--red-light);
+  animation: glitch-text 0.4s steps(2) infinite;
+}
+
+.reveal h3.honest {
+  color: var(--lamp-light);
+  text-shadow: 0 0 14px rgba(232, 200, 106, 0.5);
+  animation: neon 3.1s infinite steps(1);
+}
+
+@keyframes glitch-text {
+  0% {
+    text-shadow:
+      -3px 0 #e8786a,
+      3px 0 #4a5a6a;
+    transform: translate(0, 0);
+  }
+  25% {
+    text-shadow:
+      3px 0 #e8786a,
+      -3px 0 #4a5a6a;
+    transform: translate(-2px, 1px);
+  }
+  50% {
+    text-shadow:
+      -1px 0 #e8786a,
+      1px 0 #4a5a6a;
+    transform: translate(2px, -1px);
+  }
+  75% {
+    text-shadow:
+      4px 1px #e8786a,
+      -4px -1px #4a5a6a;
+    transform: translate(-1px, 0);
+  }
+}
+
+.reveal p {
+  margin: 6px 0;
+}
+
+.reveal-cards {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin: 6px 0 0;
+}
+
+.reveal-cards .card {
+  cursor: default;
+}
+
+.reveal-cards .card.off {
+  outline: 3px solid var(--red-light);
+}
+
+.bottom {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: 10px;
+}
+
+.bottom > * {
+  pointer-events: auto;
+}
+
+.status {
+  background: rgba(0, 0, 0, 0.65);
+  padding: 2px 14px;
+}
+
+.status.mine {
+  color: var(--lamp-light);
+  animation: turn-glow 1.6s ease-in-out infinite;
+}
+
+@keyframes turn-glow {
+  0%,
+  100% {
+    text-shadow: 0 0 0 transparent;
+  }
+  50% {
+    text-shadow: 0 0 10px rgba(232, 200, 106, 0.8);
+  }
+}
+
+.timer {
+  width: 320px;
+  height: 6px;
+  background: var(--ink);
+  border: 1px solid var(--felt-light);
+}
+
+.timer-fill {
+  height: 100%;
+  background: var(--lamp-light);
+}
+
+.timer-fill.low {
+  background: var(--red-light);
+}
+
+.ranks,
+.actions {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  padding: 4px 8px;
+}
+
+.actions {
+  gap: 10px;
+  background: none;
+}
+
+.ranks-label {
+  color: var(--dim);
+  margin-right: 6px;
+}
+
+.rank-btn {
+  min-width: 38px;
+  padding: 0 6px;
+  box-shadow: none;
+}
+
+.rank-btn.active {
+  background: var(--rust);
+  border-color: var(--lamp-light);
+}
+
+/* Your hand: rows of 8, each row tucked over the one above so only its top corners show.
+   Capped in height (it scrolls) so it never pushes up over the buttons. */
+.hand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 1280px;
+  max-height: 290px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 22px 16px 2px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--felt-light) transparent;
+}
+
+.hand-row {
+  display: flex;
+  gap: 6px;
+}
+
+/* Each extra row shows only a 32px strip of the row above: enough for its "A♣" corner. */
+/* Each extra row leaves a 40px strip of the row above showing: its corner, and room to click it. */
+.hand-row + .hand-row {
+  margin-top: -46px;
+}
+
+/* Cards read like real ones: "A♣" in the top-left corner, a big suit bottom-right.
+   The face is a dithered image (see ui/dither.ts) lit from the lamp, with a soft warm glow. */
+.card {
+  width: 60px;
+  height: 86px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 1px;
+  padding: 1px 4px;
+  background: var(--pale) var(--card-bg) center / 100% 100% no-repeat;
+  image-rendering: pixelated;
+  border: 2px solid var(--wood);
+  border-radius: 4px;
+  box-shadow:
+    2px 2px 0 var(--black),
+    0 0 10px rgba(232, 200, 106, 0.22);
+  cursor: pointer;
+  position: relative;
+  transition:
+    transform 0.08s,
+    box-shadow 0.15s;
+  user-select: none;
+}
+
+.card .rank {
+  font-size: 28px;
+  line-height: 1;
+  text-shadow: 1px 1px 0 rgba(255, 248, 222, 0.7);
+}
+
+.card .suit {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.card:hover,
+.card.selected {
+  background-image: var(--card-bg-lit);
+}
+
+.card:hover {
+  box-shadow:
+    2px 2px 0 var(--black),
+    0 0 14px rgba(232, 200, 106, 0.45);
+}
+
+.card.selected {
+  animation: card-glow 1.6s ease-in-out infinite;
+}
+
+/* Selected: a gold ring set off by a thin dark gap, so it reads even against neighbouring cards. */
+@keyframes card-glow {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 2px var(--black),
+      0 0 0 5px var(--lamp-light),
+      0 0 12px 5px rgba(232, 200, 106, 0.6);
+  }
+  50% {
+    box-shadow:
+      0 0 0 2px var(--black),
+      0 0 0 5px #fff1c0,
+      0 0 24px 9px rgba(232, 200, 106, 0.85);
+  }
+}
+
+.card .pip {
+  position: absolute;
+  right: 5px;
+  bottom: 3px;
+  font-size: 36px;
+  line-height: 1;
+}
+
+.card.red {
+  color: #a8281c;
+}
+
+/* x2 mode: the second deck is the same card as a colour negative. */
+.card.inverted {
+  filter: invert(1);
+}
+
+.card.black {
+  color: #141410;
+}
+
+/* Hovering lifts a card out of its row and above the rows in front of it. */
+.hand .card:hover {
+  transform: translateY(-10px);
+  z-index: 3;
+}
+
+/* Selected cards stay where they are and light up: gold outline, lit face, warm inner glow, and
+   the pulsing glow from .card.selected. They keep their depth, so the rows in front stay reachable. */
+.hand .card.selected::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 2px;
+  background: rgba(232, 168, 48, 0.32);
+  mix-blend-mode: multiply;
+  box-shadow: inset 0 0 10px 2px rgba(232, 200, 106, 0.9);
+  pointer-events: none;
+}
+
+.staging {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.staging:empty {
+  display: none;
+}
+
+.staged-row {
+  display: flex;
+  gap: 18px;
+  padding: 0 10px;
+}
+
+/* A card hidden under another peeks out to its left, so its "A♣" corner shows and can be clicked. */
+.staged {
+  position: relative;
+  padding: 0 0 0 0;
+}
+
+.staged:has(.tucked) {
+  padding-left: 30px;
+}
+
+.staged .top {
+  z-index: 1;
+}
+
+.staged .tucked {
+  position: absolute;
+  left: 0;
+  top: 8px;
+  z-index: 0;
+  filter: brightness(0.7);
+}
+
+.staged .tucked:hover {
+  filter: none;
+  z-index: 2;
+  transform: translateY(-4px);
+}
+
+/* A filter replaces any other, so x2 mode's inverted cards need the inversion repeated here. */
+.staged .tucked.inverted {
+  filter: invert(1) brightness(0.7);
+}
+
+.staged .tucked.inverted:hover {
+  filter: invert(1);
+}
+
+.staged .target {
+  outline: 3px dashed var(--lamp-light);
+}
+
+.staged .picking {
+  outline: 3px solid var(--red-light);
+}
+
+.staging-note {
+  font-size: 18px;
+  color: var(--dim);
+  background: rgba(0, 0, 0, 0.55);
+  padding: 0 10px;
+}
+
+.staging-note.warn {
+  color: var(--red-light);
+}
+
+.menu {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  z-index: 5;
+}
+
+.menu button {
+  font-size: 18px;
+  white-space: nowrap;
+}
+
+.over {
+  z-index: 30;
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  pointer-events: auto;
+}
+
+.over .panel {
+  text-align: center;
+  min-width: 300px;
+}
+
+.over h2 {
+  font-size: 56px;
+}
+
+/* --- Labels, toasts --------------------------------------------------------- */
+
+.label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  text-align: center;
+  white-space: nowrap;
+  text-shadow: 2px 2px 0 var(--black), -1px -1px 0 var(--black);
+}
+
+.label-name {
+  font-size: 22px;
+}
+
+.label-sub {
+  font-size: 17px;
+  color: var(--dim);
+}
+
+.label.turn .label-name {
+  color: var(--lamp-light);
+  text-shadow:
+    2px 2px 0 var(--black),
+    0 0 10px rgba(232, 200, 106, 0.6);
+}
+
+.label.turn .label-name::before {
+  content: '▸ ';
+}
+
+.label.away {
+  opacity: 0.55;
+}
+
+.label.edge {
+  background: rgba(0, 0, 0, 0.55);
+  padding: 0 8px;
+}
+
+/* What a player just did, typed out above their name with a blinking block cursor. */
+.speech {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 2px 10px 1px;
+  font-size: 24px;
+  letter-spacing: 1px;
+  white-space: nowrap;
+  color: var(--pale);
+  background: rgba(5, 5, 4, 0.88) var(--panel-tex);
+  background-size: 96px 96px;
+  border: 1px solid var(--felt-light);
+  box-shadow:
+    3px 3px 0 var(--black),
+    0 0 14px rgba(0, 0, 0, 0.8);
+  text-shadow: 0 0 8px rgba(242, 230, 196, 0.35);
+  transition: opacity 0.5s;
+}
+
+/* A little tail pointing down at the speaker. */
+.speech::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-left: -5px;
+  border: 5px solid transparent;
+  border-top-color: var(--felt-light);
+}
+
+.speech.gone {
+  display: none;
+}
+
+.speech.fading {
+  opacity: 0;
+}
+
+.speech.claim {
+  color: var(--lamp-light);
+  text-shadow: 0 0 10px rgba(232, 200, 106, 0.5);
+}
+
+.speech.call {
+  color: var(--red-light);
+  border-color: var(--red-light);
+  font-size: 30px;
+  text-shadow: 0 0 12px rgba(232, 80, 58, 0.7);
+  animation: speech-glitch 0.4s steps(2) infinite;
+}
+
+/* Like glitch-text, but only the shadows move, so the bubble stays centred over the speaker. */
+@keyframes speech-glitch {
+  0% {
+    text-shadow:
+      -2px 0 #e8786a,
+      2px 0 #4a5a6a,
+      0 0 12px rgba(232, 80, 58, 0.7);
+  }
+  50% {
+    text-shadow:
+      2px 0 #e8786a,
+      -2px 0 #4a5a6a,
+      0 0 12px rgba(232, 80, 58, 0.7);
+  }
+}
+
+.speech.call::after {
+  border-top-color: var(--red-light);
+}
+
+.speech.quiet {
+  color: var(--dim);
+  font-style: italic;
+}
+
+.caret {
+  display: inline-block;
+  width: 0.5em;
+  height: 0.85em;
+  margin-left: 2px;
+  vertical-align: -0.08em;
+  background: currentColor;
+  animation: caret-blink 0.75s steps(1) infinite;
+}
+
+@keyframes caret-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+.toasts {
+  position: absolute;
+  top: 56px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+}
+
+.toast {
+  background: #6a1c14;
+  border: 2px solid var(--red-light);
+  padding: 3px 14px;
+  box-shadow: 3px 3px 0 var(--black);
+  animation: toast-shake 0.4s steps(6);
+}
+
+@keyframes toast-shake {
+  0% {
+    transform: translateX(-7px);
+  }
+  33% {
+    transform: translateX(6px);
+  }
+  66% {
+    transform: translateX(-3px);
+  }
+  100% {
+    transform: none;
+  }
+}
+
+.offline {
+  position: absolute;
+  left: 50%;
+  bottom: 30px;
+  transform: translateX(-50%);
+}

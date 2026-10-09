@@ -1,0 +1,19 @@
+{
+  "name": "false-alarm",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -n server,client -c yellow,green \"npm run dev -w @bluff/server\" \"npm run dev -w @bluff/client\"",
+    "start": "npm run build -w @bluff/client && npm run start -w @bluff/server",
+    "build:server": "node scripts/build-server.mjs",
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.6",
+    "esbuild": "^0.28.2"
+  }
+}

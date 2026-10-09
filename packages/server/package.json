@@ -1,0 +1,27 @@
+{
+  "name": "@bluff/server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "False Alarm game server: lobby, rooms, and authoritative game state over Socket.IO.",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts --port=3001 --dev",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@bluff/protocol": "*",
+    "@bluff/rules": "*",
+    "express": "^5.2.1",
+    "socket.io": "^4.8.4",
+    "tsx": "^4.23.15"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^24.19.1",
+    "socket.io-client": "^4.8.4",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7"
+  }
+}
