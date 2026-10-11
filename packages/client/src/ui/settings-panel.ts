@@ -1,7 +1,7 @@
 import { settings, updateSettings, type Settings } from '../settings.js';
 import { h } from './dom.js';
 
-type VolumeKey = 'master' | 'sfx' | 'ambience';
+type VolumeKey = 'master' | 'sfx' | 'ambience' | 'music';
 type ToggleKey = 'muted' | 'crt' | 'reducedEffects' | 'mouseLook';
 
 /** The settings window: sound levels and screen options. Open it with the gear buttons. */
@@ -47,6 +47,7 @@ class SettingsPanel {
         this.slider('Master', 'master'),
         this.slider('Effects', 'sfx'),
         this.slider('Ambience', 'ambience'),
+        this.slider('Music', 'music'),
         this.toggle('Mute everything', 'muted'),
         h('h3', {}, 'Screen'),
         this.toggle('CRT scanlines', 'crt'),

@@ -33,10 +33,37 @@ function crushCurve(steps: number): Float32Array<ArrayBuffer> {
 
 const rand = (min: number, max: number) => min + Math.random() * (max - min);
 
+/** MIDI note number to frequency. */
+const hz = (note: number) => 440 * 2 ** ((note - 69) / 12);
+
+interface Bar {
+  bass: number;
+  pad: readonly number[];
+  /** Notes the melody may land on over this chord. */
+  melody: readonly number[];
+}
+
+/** The tune's chords, as MIDI notes: eight slow bars in D minor that never quite settle. */
+const BARS: readonly Bar[] = [
+  { bass: 38, pad: [53, 57, 60, 64], melody: [62, 65, 69, 72, 74, 76] }, // Dm9
+  { bass: 46, pad: [53, 57, 58, 62], melody: [62, 65, 69, 70, 74] }, // Bbmaj7
+  { bass: 43, pad: [53, 55, 58, 62], melody: [62, 65, 67, 70, 74] }, // Gm7
+  { bass: 45, pad: [52, 55, 58, 61], melody: [61, 64, 67, 70, 73] }, // A7b9
+  { bass: 38, pad: [53, 57, 60, 64], melody: [62, 65, 69, 72, 74, 76] }, // Dm9
+  { bass: 46, pad: [53, 57, 58, 62], melody: [62, 65, 69, 70, 74] }, // Bbmaj7
+  { bass: 40, pad: [52, 55, 58, 62], melody: [62, 64, 67, 70, 74] }, // Em7b5
+  { bass: 45, pad: [52, 55, 57, 61], melody: [61, 64, 67, 69, 73] }, // A7
+];
+/** Seconds per beat; four beats to a bar. */
+const BEAT = 0.9;
+/** How likely the melody is to play on each half beat of a bar. */
+const MELODY_CHANCE = [0.55, 0.1, 0.3, 0.25, 0.45, 0.15, 0.35, 0.2];
+
 export interface Volumes {
   master: number;
   sfx: number;
   ambience: number;
+  music: number;
   muted: boolean;
 }
 
@@ -45,10 +72,17 @@ class SoundEngine {
   private master: GainNode | null = null;
   private sfx: GainNode | null = null;
   private amb: GainNode | null = null;
+  private music: GainNode | null = null;
+  private musicIn: AudioNode | null = null;
+  private lead: GainNode | null = null;
+  private wow: GainNode | null = null;
   private noise: AudioBuffer | null = null;
   private brown: AudioBuffer | null = null;
-  private volumes: Volumes = { master: 0.8, sfx: 0.9, ambience: 0.5, muted: false };
+  private volumes: Volumes = { master: 0.8, sfx: 0.9, ambience: 0.5, music: 0.5, muted: false };
   private lastBeatPhase = 1;
+  private bar = 0;
+  private nextBar = 0;
+  private lastPitch = 69;
 
   constructor() {
     // Browsers only allow audio after the player does something.
@@ -89,20 +123,25 @@ class SoundEngine {
     this.amb = ctx.createGain();
     this.amb.connect(this.master);
 
+    this.music = ctx.createGain();
+    this.music.connect(this.master);
+
     this.noise = makeNoise(ctx, 1, 'white');
     this.brown = makeNoise(ctx, 4, 'brown');
     this.applyVolumes();
     this.startAmbience();
+    this.startMusic();
   }
 
   private applyVolumes(): void {
     const ctx = this.ctx;
-    if (!ctx || !this.master || !this.sfx || !this.amb) return;
+    if (!ctx || !this.master || !this.sfx || !this.amb || !this.music) return;
     const t = ctx.currentTime;
     const v = this.volumes;
     this.master.gain.setTargetAtTime(v.muted ? 0 : v.master, t, 0.05);
     this.sfx.gain.setTargetAtTime(v.sfx, t, 0.05);
     this.amb.gain.setTargetAtTime(v.ambience, t, 0.05);
+    this.music.gain.setTargetAtTime(v.music, t, 0.05);
   }
 
   /** The room: mains hum, the lamp's electric buzz with a little flutter, and dark room tone. */
@@ -146,6 +185,96 @@ class SoundEngine {
     roomGain.gain.value = 0.18;
     room.connect(roomLow).connect(roomGain).connect(amb);
     room.start();
+  }
+
+  // --- Music --------------------------------------------------------------------
+
+  /**
+   * The tune playing somewhere in the room: slow chords, a low bass and a melody that wanders, as
+   * if off a worn tape (muffled, a little unsteady in pitch, with an echo on the melody).
+   */
+  private startMusic(): void {
+    const ctx = this.ctx!;
+    const warm = this.filter('lowpass', 2600, 0.5);
+    warm.connect(this.music!);
+    this.musicIn = warm;
+
+    const flutter = ctx.createOscillator();
+    flutter.frequency.value = 0.4;
+    this.wow = ctx.createGain();
+    this.wow.gain.value = 5; // cents
+    flutter.connect(this.wow);
+    flutter.start();
+
+    const echo = ctx.createDelay(2);
+    echo.delayTime.value = BEAT * 0.75;
+    const send = ctx.createGain();
+    send.gain.value = 0.4;
+    const feedback = ctx.createGain();
+    feedback.gain.value = 0.35;
+    send.connect(echo).connect(feedback).connect(echo);
+    echo.connect(warm);
+    this.lead = ctx.createGain();
+    this.lead.connect(warm);
+    this.lead.connect(send);
+
+    setInterval(() => this.scheduleMusic(), 250);
+  }
+
+  /** Queues the next bar a little before it is due. */
+  private scheduleMusic(): void {
+    const ctx = this.ctx!;
+    const now = ctx.currentTime;
+    if (this.volumes.muted || this.volumes.music <= 0) {
+      this.nextBar = 0;
+      return;
+    }
+    if (this.nextBar < now) this.nextBar = now + 0.1;
+    while (this.nextBar < now + 2) {
+      this.playBar(BARS[this.bar % BARS.length]!, this.nextBar);
+      this.bar++;
+      this.nextBar += BEAT * 4;
+    }
+  }
+
+  private playBar(bar: Bar, t: number): void {
+    const to = this.musicIn!;
+    // Each chord breathes in and out, overlapping the next.
+    for (const pitch of bar.pad) {
+      this.note('triangle', pitch, t, 0.045, 1.5, 4.2, to, -6);
+      this.note('sawtooth', pitch, t, 0.012, 1.5, 4.2, to, 6);
+    }
+    // The root on the first beat, and a quieter push towards the next bar.
+    this.note('triangle', bar.bass, t, 0.22, 0.03, 2.2, to);
+    this.note('triangle', bar.bass, t + BEAT * 2.5, 0.12, 0.03, 1.2, to);
+    // A few melody notes a bar, each a small step from the last, so it never repeats exactly.
+    for (let slot = 0; slot < MELODY_CHANCE.length; slot++) {
+      if (Math.random() > MELODY_CHANCE[slot]!) continue;
+      const near = bar.melody.filter((p) => p !== this.lastPitch && Math.abs(p - this.lastPitch) <= 5);
+      const pool = near.length ? near : bar.melody;
+      const pitch = pool[Math.floor(Math.random() * pool.length)]!;
+      this.lastPitch = pitch;
+      const at = t + (slot * BEAT) / 2 + rand(0, 0.02);
+      this.note('sine', pitch, at, 0.14, 0.008, 1.6, this.lead!);
+      this.note('sine', pitch + 12, at, 0.045, 0.005, 0.5, this.lead!);
+    }
+  }
+
+  /** One note of the tune: `swell` seconds to reach `peak`, then `fade` seconds to die away. */
+  private note(type: OscillatorType, pitch: number, t: number, peak: number, swell: number, fade: number, to: AudioNode, cents = 0): void {
+    const ctx = this.ctx!;
+    const o = ctx.createOscillator();
+    o.type = type;
+    o.frequency.value = hz(pitch);
+    o.detune.value = cents;
+    this.wow!.connect(o.detune);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(peak, t + swell);
+    g.gain.setTargetAtTime(0, t + swell, fade / 5);
+    o.connect(g).connect(to);
+    o.start(t);
+    o.stop(t + swell + fade);
   }
 
   // --- Building blocks ----------------------------------------------------------

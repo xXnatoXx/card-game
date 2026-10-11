@@ -4,6 +4,7 @@ export interface Settings {
   master: number;
   sfx: number;
   ambience: number;
+  music: number;
   muted: boolean;
   /** CRT scanlines and flicker over the whole screen. */
   crt: boolean;
@@ -18,6 +19,7 @@ const DEFAULTS: Settings = {
   master: 0.8,
   sfx: 0.9,
   ambience: 0.5,
+  music: 0.5,
   muted: false,
   crt: true,
   reducedEffects: false,
