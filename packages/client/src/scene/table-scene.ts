@@ -344,7 +344,7 @@ export class TableScene {
       // Caught: the alarm goes off. A false alarm just stutters. Losing the call breaks your screen.
       if (msg.wasBluff) {
         fx.alarm(2800);
-        sound.alarm(2800);
+        sound.alarm();
       } else {
         fx.glitch(0.5);
         sound.falseAlarm();

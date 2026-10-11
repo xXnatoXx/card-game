@@ -312,35 +312,14 @@ class SoundEngine {
     }
   }
 
-  /** A bluff caught: an old siren winds up and down. */
-  alarm(ms: number): void {
+  /** A bluff caught: one short alarm beep. */
+  alarm(): void {
     const ctx = this.ready;
     if (!ctx) return;
     const t = ctx.currentTime;
-    const duration = ms / 1000;
-    const end = t + duration;
-    const out = ctx.createGain();
-    out.gain.setValueAtTime(0.0001, t);
-    out.gain.linearRampToValueAtTime(0.2, t + 0.06);
-    out.gain.setValueAtTime(0.2, Math.max(t + 0.07, end - 0.35));
-    out.gain.linearRampToValueAtTime(0.0001, end);
-    out.connect(this.sfx!);
     const lowpass = this.filter('lowpass', 2400);
-    lowpass.connect(out);
-
-    const sweep = ctx.createOscillator();
-    sweep.type = 'triangle';
-    sweep.frequency.value = 1.4;
-    const depth = ctx.createGain();
-    depth.gain.value = 260;
-    sweep.connect(depth);
-    for (const [type, freq] of [['sawtooth', 820], ['square', 826]] as const) {
-      const o = this.tone(type, freq, freq, t, duration);
-      depth.connect(o.frequency);
-      o.connect(lowpass);
-    }
-    sweep.start(t);
-    sweep.stop(end + 0.05);
+    lowpass.connect(this.envelope(t, 0.18, 0.01, 0.28));
+    this.tone('square', 820, 820, t, 0.29).connect(lowpass);
   }
 
   /** A false alarm: a flat "wrong" buzzer, twice. */
