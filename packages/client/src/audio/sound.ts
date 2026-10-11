@@ -312,26 +312,23 @@ class SoundEngine {
     }
   }
 
-  /** A bluff caught: an old siren winds up and down, once. */
+  /** A bluff caught: the game show "wrong answer" buzzer, one long harsh blast. */
   alarm(): void {
     const ctx = this.ready;
     if (!ctx) return;
     const t = ctx.currentTime;
-    const duration = 0.9;
+    const duration = 0.75;
     const end = t + duration;
     const out = ctx.createGain();
     out.gain.setValueAtTime(0.0001, t);
-    out.gain.linearRampToValueAtTime(0.2, t + 0.06);
-    out.gain.setValueAtTime(0.2, end - 0.3);
+    out.gain.linearRampToValueAtTime(0.24, t + 0.015);
+    out.gain.setValueAtTime(0.24, end - 0.04);
     out.gain.linearRampToValueAtTime(0.0001, end);
     out.connect(this.sfx!);
-    const lowpass = this.filter('lowpass', 2400);
+    const lowpass = this.filter('lowpass', 1800);
     lowpass.connect(out);
-    for (const [type, detune] of [['sawtooth', 0], ['square', 6]] as const) {
-      const o = this.tone(type, 560 + detune, 1080 + detune, t, duration * 0.45);
-      o.frequency.exponentialRampToValueAtTime(560 + detune, end);
-      o.stop(end + 0.05);
-      o.connect(lowpass);
+    for (const [type, freq] of [['sawtooth', 98], ['sawtooth', 104], ['square', 147]] as const) {
+      this.tone(type, freq, freq, t, duration).connect(lowpass);
     }
   }
 
