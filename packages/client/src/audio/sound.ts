@@ -71,8 +71,8 @@ export type TuneName = 'lobby' | 'table';
 interface Tune {
   /** Seconds per beat; four beats to a bar. */
   beat: number;
-  /** Which of the bar's lead notes the lead guitar picks on each half beat. */
-  picking: readonly number[];
+  /** The lead guitar's line: which of the bar's lead notes it picks on each half beat, or - to let the last one ring on. */
+  picking: string;
   /** The half beats where the rhythm guitar lets its chord ring; on the rest it chugs with the strings muted. */
   accents: readonly number[];
   /**
@@ -122,13 +122,13 @@ const BIG_FILL: Beat = { ...HALF_BUSY, snare: '........X...xxxx' };
 // Both tunes are played by the same band: a heavy groove of drums, bass and overdriven guitars.
 const TUNES: Record<TuneName, Tune> = {
   // Between games: eight slow bars in D minor that never quite settle. The lead climbs each chord
-  // and comes back down. The bass drives on each chord's root, and in the first two bars of every
+  // and comes back down, lingering on the bottom and top notes. The bass drives on each chord's root, and in the first two bars of every
   // four flicks to a neighbouring note on the last half beat. Half way through a round the drums
   // and bass drop out for a bar. The singing guitar's riff keeps coming back to the same low note,
   // and every second bar answers it. The rhythm guitar plays square, with the kick.
   lobby: {
     beat: 0.8,
-    picking: [0, 1, 2, 3, 2, 1, 2, 3],
+    picking: '0-123-21',
     accents: [0, 4],
     bassLines: ['00000001', '00000001', '00000000', '00000000'],
     phrases: [
@@ -160,7 +160,7 @@ const TUNES: Record<TuneName, Tune> = {
   // guitar's accents fall three, three and two half beats apart.
   table: {
     beat: 0.66,
-    picking: [0, 3, 1, 3, 2, 3, 1, 3],
+    picking: '03132313',
     accents: [0, 3, 6],
     bassLines: [
       '0---0220', '001-----', '0---0220', '001-----', '0-1-0220', '0-0-1---', '0---0220', '001-----',
@@ -489,8 +489,8 @@ class SoundEngine {
     const round = index % (tune.bars.length * 2);
     const band = round >= 2;
     const beat = tune.drums[round];
-    // The lead grinds out eight held notes a bar.
-    tune.picking.forEach((string, slot) => this.strum([bar.lead[string]!], t + slot * half, half - 0.07, guitars.lead));
+    // The lead holds each note until just before its next one.
+    for (const [note, slot, held] of notesOf(tune.picking)) this.strum([bar.lead[note]!], t + slot * half, held * half - 0.07, guitars.lead);
     if (beat) this.drumBar(beat, t, tune.beat / 4, band, fade, out);
     if (band && !beat) {
       // A break: the rhythm guitar lets one chord ring where the drums and bass were.
