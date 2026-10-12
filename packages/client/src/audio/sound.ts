@@ -50,12 +50,12 @@ const hz = (note: number) => 440 * 2 ** ((note - 69) / 12);
 
 interface Bar {
   bass: number;
-  /** The chord: picked a string at a time in the lobby, struck by the rhythm guitar at the table. */
+  /** The rhythm guitar's chord. It chugs on the two lowest strings, and the bass guitar jumps up to the top one. */
   chord: readonly number[];
   /** Notes the melody may land on over this chord. */
   melody: readonly number[];
-  /** The lead guitar's figure at the table: low, middle and high notes, the high note's neighbour, and the note picked in between. */
-  riff?: readonly [number, number, number, number, number];
+  /** The four notes the lead guitar picks between, lowest first. */
+  lead: readonly number[];
 }
 
 export type TuneName = 'lobby' | 'table';
@@ -65,56 +65,59 @@ interface Tune {
   beat: number;
   /** How likely the melody is to play on each half beat of a bar. */
   melody: readonly number[];
+  /** Which of the bar's lead notes the lead guitar picks on each half beat. */
+  picking: readonly number[];
   /** The chords, as MIDI notes. */
   bars: readonly Bar[];
 }
 
+// Both tunes are played by the same band: a heavy groove of drums, bass and overdriven guitars.
 const TUNES: Record<TuneName, Tune> = {
-  // Between games: eight slow bars in D minor that never quite settle.
+  // Between games: eight slow bars in D minor that never quite settle. The lead climbs each chord
+  // and comes back down.
   lobby: {
     beat: 0.9,
     melody: [0.55, 0.1, 0.3, 0.25, 0.45, 0.15, 0.35, 0.2],
+    picking: [0, 1, 2, 3, 2, 1, 2, 3],
     bars: [
-      { bass: 38, chord: [53, 57, 60, 64], melody: [62, 65, 69, 72, 74, 76] }, // Dm9
-      { bass: 46, chord: [53, 57, 58, 62], melody: [62, 65, 69, 70, 74] }, // Bbmaj7
-      { bass: 43, chord: [53, 55, 58, 62], melody: [62, 65, 67, 70, 74] }, // Gm7
-      { bass: 45, chord: [52, 55, 58, 61], melody: [61, 64, 67, 70, 73] }, // A7b9
-      { bass: 38, chord: [53, 57, 60, 64], melody: [62, 65, 69, 72, 74, 76] }, // Dm9
-      { bass: 46, chord: [53, 57, 58, 62], melody: [62, 65, 69, 70, 74] }, // Bbmaj7
-      { bass: 40, chord: [52, 55, 58, 62], melody: [62, 64, 67, 70, 74] }, // Em7b5
-      { bass: 45, chord: [52, 55, 57, 61], melody: [61, 64, 67, 69, 73] }, // A7
+      { bass: 38, chord: [38, 45, 50], melody: [62, 65, 69, 72, 74, 76], lead: [53, 57, 60, 64] }, // Dm9
+      { bass: 46, chord: [41, 46, 53], melody: [62, 65, 69, 70, 74], lead: [53, 57, 58, 62] }, // Bbmaj7
+      { bass: 43, chord: [38, 43, 50], melody: [62, 65, 67, 70, 74], lead: [53, 55, 58, 62] }, // Gm7
+      { bass: 45, chord: [40, 45, 52], melody: [61, 64, 67, 70, 73], lead: [52, 55, 58, 61] }, // A7b9
+      { bass: 38, chord: [38, 45, 50], melody: [62, 65, 69, 72, 74, 76], lead: [53, 57, 60, 64] }, // Dm9
+      { bass: 46, chord: [41, 46, 53], melody: [62, 65, 69, 70, 74], lead: [53, 57, 58, 62] }, // Bbmaj7
+      { bass: 40, chord: [40, 46, 52], melody: [62, 64, 67, 70, 74], lead: [52, 55, 58, 62] }, // Em7b5
+      { bass: 45, chord: [40, 45, 52], melody: [61, 64, 67, 69, 73], lead: [52, 55, 57, 61] }, // A7
     ],
   },
-  // While a game is on, a battle of nerves played by a band: a heavy, unhurried groove of drums,
-  // bass and overdriven guitars in E minor, over a bass that sinks a semitone every bar, then two
-  // bars that wind the tension back up.
+  // While a game is on, a battle of nerves in E minor, unhurried, over a bass that sinks a semitone
+  // every bar, then two bars that wind the tension back up. Every other note of the lead is on the
+  // same string, and every second bar it reaches a step higher.
   table: {
     beat: 0.66,
     melody: [0.35, 0, 0.1, 0, 0.25, 0, 0.15, 0.1],
+    picking: [0, 3, 1, 3, 2, 3, 1, 3],
     bars: [
-      { bass: 40, chord: [40, 47, 52], melody: [76, 78, 79, 83], riff: [64, 67, 71, 72, 76] }, // Em
-      { bass: 39, chord: [39, 47, 51], melody: [75, 78, 83], riff: [63, 66, 71, 72, 75] }, // B/D#
-      { bass: 38, chord: [38, 43, 50], melody: [74, 79, 83], riff: [62, 67, 71, 72, 74] }, // G/D
-      { bass: 37, chord: [37, 45, 49], melody: [73, 76, 81], riff: [61, 64, 69, 70, 73] }, // A/C#
-      { bass: 36, chord: [36, 43, 48], melody: [72, 76, 79, 84], riff: [60, 64, 67, 68, 72] }, // C
-      { bass: 35, chord: [35, 40, 47], melody: [71, 76, 79, 83], riff: [59, 64, 67, 69, 71] }, // Em/B
-      { bass: 41, chord: [41, 48, 53], melody: [72, 77, 81], riff: [60, 65, 69, 70, 72] }, // F
-      { bass: 35, chord: [35, 42, 47], melody: [75, 78, 81, 83], riff: [59, 63, 66, 69, 71] }, // B7
+      { bass: 40, chord: [40, 47, 52], melody: [76, 78, 79, 83], lead: [64, 67, 71, 76] }, // Em
+      { bass: 39, chord: [39, 47, 51], melody: [75, 78, 83], lead: [63, 66, 72, 75] }, // B/D#
+      { bass: 38, chord: [38, 43, 50], melody: [74, 79, 83], lead: [62, 67, 71, 74] }, // G/D
+      { bass: 37, chord: [37, 45, 49], melody: [73, 76, 81], lead: [61, 64, 70, 73] }, // A/C#
+      { bass: 36, chord: [36, 43, 48], melody: [72, 76, 79, 84], lead: [60, 64, 67, 72] }, // C
+      { bass: 35, chord: [35, 40, 47], melody: [71, 76, 79, 83], lead: [59, 64, 69, 71] }, // Em/B
+      { bass: 41, chord: [41, 48, 53], melody: [72, 77, 81], lead: [60, 65, 69, 72] }, // F
+      { bass: 35, chord: [35, 42, 47], melody: [75, 78, 81, 83], lead: [59, 63, 69, 71] }, // B7
     ],
   },
 };
-/** The table tune's bass line: semitones above the chord's bass note on each half beat. */
-const BASS_LINE = [0, 0, 12, 0, 0, 12, 0, 12];
+/** The half beats where the bass guitar jumps from the bar's bass note to the top of the rhythm guitar's chord. */
+const BASS_JUMPS = [2, 5, 7];
 /** The half beats where the rhythm guitar lets its chord ring; on the rest it chugs with the strings muted. */
 const ACCENTS = [0, 3, 6];
-/** The lobby tune's lead guitar: which note of the chord it picks on each half beat. */
-const PICKING = [0, 1, 2, 3, 2, 1, 2, 3];
 
 /** The recorded instruments under public/samples, and the lowest and highest MIDI note kept of each. */
 const RECORDED: Record<string, readonly [number, number]> = {
   distortion_guitar: [35, 84],
   electric_guitar_muted: [35, 48],
-  electric_guitar_clean: [52, 64],
   electric_bass_pick: [35, 53],
 };
 const RECORDED_DRUMS = ['snare', 'hat', 'crash'];
@@ -128,9 +131,8 @@ interface Sample {
   gain: number;
 }
 
-/** One guitarist: the recorded instrument they play, where it goes, and the amp used for strings synthesized in its place. */
+/** One guitarist: where their recorded notes go, and the amp used for strings synthesized in their place. */
 interface Guitar {
-  sound: string;
   direct: AudioNode;
   amp: AudioNode;
 }
@@ -320,25 +322,17 @@ class SoundEngine {
       echo.connect(out);
       // One amp per guitar, so their notes don't smear into one another. Recorded guitars already
       // carry their amp's sound and go straight out at `level`.
-      const guitar = (sound: string, level: number, drive: number, ampLevel: number, ...to: AudioNode[]): Guitar => {
+      const guitar = (level: number, drive: number, ampLevel: number, ...to: AudioNode[]): Guitar => {
         const direct = ctx.createGain();
         direct.gain.value = level;
         for (const node of to) direct.connect(node);
-        return { sound, direct, amp: amp(drive, ampLevel, ...to) };
+        return { direct, amp: amp(drive, ampLevel, ...to) };
       };
-      // In the lobby the lead plays clean and the low strings sit further back.
-      const guitars =
-        name === 'lobby'
-          ? {
-              rhythm: guitar('distortion_guitar', 0.05, 5, 0.045, fade),
-              lead: guitar('electric_guitar_clean', 0.12, 0.5, 0.12, fade),
-              solo: guitar('distortion_guitar', 0.07, 8, 0.05, fade, send),
-            }
-          : {
-              rhythm: guitar('distortion_guitar', 0.09, 5, 0.08, fade),
-              lead: guitar('distortion_guitar', 0.06, 8, 0.045, fade),
-              solo: guitar('distortion_guitar', 0.08, 8, 0.06, fade, send),
-            };
+      const guitars = {
+        rhythm: guitar(0.09, 5, 0.08, fade),
+        lead: guitar(0.06, 8, 0.045, fade),
+        solo: guitar(0.08, 8, 0.06, fade, send),
+      };
       return { fade, out, guitars };
     };
     this.tunes = { lobby: outputs('lobby'), table: outputs('table') };
@@ -425,16 +419,8 @@ class SoundEngine {
     // the rest of the band comes in after two bars.
     const round = index % (tune.bars.length * 2);
     const band = round >= 2;
-    if (atTable) {
-      // At the table the lead grinds out eight held notes a bar, every other one on the same
-      // string, reaching a step higher every second bar.
-      const [low, mid, high, neighbour, top] = bar.riff!;
-      const figure = [low, top, mid, top, index % 2 ? neighbour : high, top, mid, top];
-      figure.forEach((pitch, slot) => this.strum([pitch], t + slot * half, half - 0.07, guitars.lead));
-    } else {
-      // In the lobby it picks slowly up through the chord and back, letting the strings ring.
-      PICKING.forEach((string, slot) => this.strum([bar.chord[string]!], t + slot * half, 0.8, guitars.lead));
-    }
+    // The lead grinds out eight held notes a bar.
+    tune.picking.forEach((string, slot) => this.strum([bar.lead[string]!], t + slot * half, half - 0.07, guitars.lead));
     for (let slot = 0; slot < 8; slot++) {
       const at = t + slot * half;
       if (hat) this.play(hat, at, slot % 2 ? 0.1 : 0.06, fade);
@@ -447,19 +433,11 @@ class SoundEngine {
         if (snare) this.play(snare, at, 0.3, fade);
         else this.noiseBurst(at, 0.14).connect(this.filter('bandpass', 1800, 0.8)).connect(this.envelope(at, 0.15, 0.003, 0.12, out));
       }
-      if (atTable) {
-        // A softer kick lands with the guitar's off-beat accent, so the groove leans forward.
-        if (slot === 3) this.tone('sine', 120, 45, at, 0.14).connect(this.envelope(at, 0.28, 0.004, 0.14, out));
-        this.bassNote(bar.bass + BASS_LINE[slot]!, at, slot === 0 ? 0.2 : 0.13, 0.3, fade, out);
-        if (ACCENTS.includes(slot)) this.strum(bar.chord, at, half - 0.04, guitars.rhythm);
-        else this.strum(bar.chord.slice(0, 2), at, 0.06, guitars.rhythm, 'muted');
-      } else if (slot === 0) {
-        // One low octave growls under the whole bar, with the bass on the root.
-        this.strum([bar.bass, bar.bass + 12], at, tune.beat * 4 - 0.3, guitars.rhythm);
-        this.bassNote(bar.bass, at, 0.22, 2.2, fade, out);
-      } else if (slot === 5) {
-        this.bassNote(bar.bass, at, 0.12, 1.2, fade, out);
-      }
+      // A softer kick lands with the guitar's off-beat accent, so the groove leans forward.
+      if (slot === 3) this.tone('sine', 120, 45, at, 0.14).connect(this.envelope(at, 0.28, 0.004, 0.14, out));
+      this.bassNote(BASS_JUMPS.includes(slot) ? bar.chord[2]! : bar.bass, at, slot === 0 ? 0.2 : 0.13, half - 0.03, fade, out);
+      if (ACCENTS.includes(slot)) this.strum(bar.chord, at, half - 0.04, guitars.rhythm);
+      else this.strum(bar.chord.slice(0, 2), at, 0.06, guitars.rhythm, 'muted');
     }
     // A second guitar sings over the top: once the band is in for the lobby, and for the second
     // half of each round at the table.
@@ -515,7 +493,7 @@ class SoundEngine {
     pitches.forEach((pitch, i) => {
       // The pick crosses the strings one after another.
       const at = t + i * 0.008;
-      const sample = this.samples.get(`${muted ? 'electric_guitar_muted' : guitar.sound}/${pitch}`);
+      const sample = this.samples.get(`${muted ? 'electric_guitar_muted' : 'distortion_guitar'}/${pitch}`);
       let src: AudioBufferSourceNode;
       if (sample) {
         // Muted strings were recorded clean, so they still need the amp's overdrive.

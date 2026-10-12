@@ -1,8 +1,8 @@
 Recorded instrument samples used by the game's music
 ====================================================
 
-Guitars and bass (distortion_guitar, electric_guitar_muted, electric_guitar_clean,
-electric_bass_pick): single notes rendered from the FluidR3_GM soundfont by Frank Wen,
+Guitars and bass (distortion_guitar, electric_guitar_muted, electric_bass_pick):
+single notes rendered from the FluidR3_GM soundfont by Frank Wen,
 from https://github.com/gleitz/midi-js-soundfonts (Creative Commons Attribution 3.0).
 Files are named by MIDI note number.
 
