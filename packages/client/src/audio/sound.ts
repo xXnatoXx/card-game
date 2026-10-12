@@ -73,6 +73,8 @@ interface Tune {
   beat: number;
   /** Which of the bar's lead notes the lead guitar picks on each half beat. */
   picking: readonly number[];
+  /** The half beats where the rhythm guitar lets its chord ring; on the rest it chugs with the strings muted. */
+  accents: readonly number[];
   /**
    * The bass guitar's line for each bar, going round. On each half beat it plays one of the bar's
    * bass notes, or lets the last one ring on (-).
@@ -109,15 +111,13 @@ const crashing = (beat: Beat): Beat => ({ ...beat, hat: 'C' + beat.hat.slice(1) 
 const BACKBEAT: Beat = { kick: 'X.......X.......', snare: '....X.......X...', hat: 'x.X.x.X.x.X.x.X.' };
 const DOUBLED: Beat = { ...BACKBEAT, kick: 'X.......X.x.....' };
 
-// The table's drums. In half time the snare waits for the third beat, and the kick sometimes pushes
-// ahead of it; in full time the snare is on every second beat, and fills close the phrases.
+// The table's drums play half time: the snare waits for the third beat, the kick sometimes pushes
+// ahead of it, and fills close the phrases.
 const HALF: Beat = { kick: 'X...............', snare: '........X.......', hat: 'X...X...X...X...' };
 const HALF_PUSHED: Beat = { ...HALF, kick: 'X.....x.........', hat: 'X...X...X...X.x.' };
 const HALF_BUSY: Beat = { ...HALF_PUSHED, kick: 'X..x..x.........' };
-const FULL: Beat = { kick: 'X.......X..x....', snare: '....X.......X...', hat: 'X...X...X...X...' };
-const FULL_BUSY: Beat = { ...FULL, kick: 'X..x....X..x....', snare: '....X.......X..x' };
-const FILL: Beat = { ...FULL, snare: '....X.......X.xx' };
-const BIG_FILL: Beat = { ...FULL_BUSY, snare: '....X.......xxxx' };
+const FILL: Beat = { ...HALF_PUSHED, snare: '........X.....xx' };
+const BIG_FILL: Beat = { ...HALF_BUSY, snare: '........X...xxxx' };
 
 // Both tunes are played by the same band: a heavy groove of drums, bass and overdriven guitars.
 const TUNES: Record<TuneName, Tune> = {
@@ -125,10 +125,11 @@ const TUNES: Record<TuneName, Tune> = {
   // and comes back down. The bass drives on each chord's root, and in the first two bars of every
   // four flicks to a neighbouring note on the last half beat. Half way through a round the drums
   // and bass drop out for a bar. The singing guitar's riff keeps coming back to the same low note,
-  // and every second bar answers it.
+  // and every second bar answers it. The rhythm guitar plays square, with the kick.
   lobby: {
     beat: 0.8,
     picking: [0, 1, 2, 3, 2, 1, 2, 3],
+    accents: [0, 4],
     bassLines: ['00000001', '00000001', '00000000', '00000000'],
     phrases: [
       '0-0-3-0-1-0-3---', '........3-2-1-0-', '0-0-3-0-1-0-3---', '........3-2-1-0-',
@@ -154,11 +155,13 @@ const TUNES: Record<TuneName, Tune> = {
   // same string, and every second bar it reaches a step higher. The bass holds long roots, and
   // every second bar ends on a turn: up to a note of the chord twice, then home. For the second
   // half of a round it drives in half beats, popping up an octave, and keeps the turn. The drums
-  // play half time for the first half of a round and full time for the second, when the singing
-  // guitar joins with a riff on the bottom of each chord and an answer every second bar.
+  // stay in half time, with a busier kick and fills for the second half, when the singing guitar
+  // joins with a riff on the bottom of each chord and an answer every second bar. The rhythm
+  // guitar's accents fall three, three and two half beats apart.
   table: {
     beat: 0.66,
     picking: [0, 3, 1, 3, 2, 3, 1, 3],
+    accents: [0, 3, 6],
     bassLines: [
       '0---0220', '001-----', '0---0220', '001-----', '0-1-0220', '0-0-1---', '0---0220', '001-----',
       '00100220', '00100101', '00100220', '00100101', '00100220', '00100101', '00100220', '00100101',
@@ -169,7 +172,7 @@ const TUNES: Record<TuneName, Tune> = {
     ],
     drums: [
       HALF, HALF_PUSHED, crashing(HALF), HALF_PUSHED, HALF, HALF_BUSY, HALF, HALF_PUSHED,
-      crashing(FULL), FULL_BUSY, FULL, FILL, FULL, FULL_BUSY, FULL, BIG_FILL,
+      crashing(HALF_PUSHED), HALF_BUSY, HALF_PUSHED, FILL, HALF_PUSHED, HALF_BUSY, HALF_PUSHED, BIG_FILL,
     ],
     bars: [
       { bass: [40, 52, 43], chord: [40, 47, 52], melody: [76, 79, 81, 83], lead: [64, 67, 71, 76] }, // Em
@@ -183,8 +186,6 @@ const TUNES: Record<TuneName, Tune> = {
     ],
   },
 };
-/** The half beats where the rhythm guitar lets its chord ring; on the rest it chugs with the strings muted. */
-const ACCENTS = [0, 3, 6];
 
 /** The recorded instruments under public/samples, and the lowest and highest MIDI note kept of each. */
 const RECORDED: Record<string, readonly [number, number]> = {
@@ -500,7 +501,7 @@ class SoundEngine {
         this.bassNote(bar.bass[note]!, t + slot * half, slot === 0 ? 0.2 : 0.13, held * half - 0.03, fade, out);
       }
       for (let slot = 0; slot < 8; slot++) {
-        if (ACCENTS.includes(slot)) this.strum(bar.chord, t + slot * half, half - 0.04, guitars.rhythm);
+        if (tune.accents.includes(slot)) this.strum(bar.chord, t + slot * half, half - 0.04, guitars.rhythm);
         else this.strum(bar.chord.slice(0, 2), t + slot * half, 0.06, guitars.rhythm, 'muted');
       }
     }
