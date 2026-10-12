@@ -1,5 +1,6 @@
-// Every sound in the game is synthesized here with Web Audio: no sound files. Effects go through
-// a crude bit-crusher so they sound like an old machine, to match the dithered picture.
+// The game's sound effects are synthesized here with Web Audio. Effects go through a crude
+// bit-crusher so they sound like an old machine, to match the dithered picture. The music's band
+// plays recorded notes from public/samples, and synthesized ones until those have loaded.
 
 type Kind = 'white' | 'brown';
 
@@ -109,6 +110,31 @@ const ACCENTS = [0, 3, 6];
 /** The lobby tune's lead guitar: which note of the chord it picks on each half beat. */
 const PICKING = [0, 1, 2, 3, 2, 1, 2, 3];
 
+/** The recorded instruments under public/samples, and the lowest and highest MIDI note kept of each. */
+const RECORDED: Record<string, readonly [number, number]> = {
+  distortion_guitar: [35, 84],
+  electric_guitar_muted: [35, 48],
+  electric_guitar_clean: [52, 64],
+  electric_bass_pick: [35, 53],
+};
+const RECORDED_DRUMS = ['snare', 'hat', 'crash'];
+
+/** A recorded note or drum hit, ready to play. */
+interface Sample {
+  buffer: AudioBuffer;
+  /** Seconds of hush to skip before the sound starts. */
+  lead: number;
+  /** What to multiply it by so every recording peaks at the same level. */
+  gain: number;
+}
+
+/** One guitarist: the recorded instrument they play, where it goes, and the amp used for strings synthesized in its place. */
+interface Guitar {
+  sound: string;
+  direct: AudioNode;
+  amp: AudioNode;
+}
+
 export interface Volumes {
   master: number;
   sfx: number;
@@ -124,8 +150,9 @@ class SoundEngine {
   private amb: GainNode | null = null;
   private music: GainNode | null = null;
   /** Each tune has its own output, so one can fade out under the other. */
-  private tunes: Record<TuneName, { fade: GainNode; out: AudioNode; amps: { rhythm: AudioNode; lead: AudioNode; solo: AudioNode } }> | null = null;
+  private tunes: Record<TuneName, { fade: GainNode; out: AudioNode; guitars: { rhythm: Guitar; lead: Guitar; solo: Guitar } }> | null = null;
   private tune: TuneName = 'lobby';
+  private samples = new Map<string, Sample>();
   private strings = new Map<number, { buffer: AudioBuffer; rate: number; loopStart: number }>();
   private wow: GainNode | null = null;
   private vibrato: GainNode | null = null;
@@ -291,17 +318,70 @@ class SoundEngine {
       feedback.gain.value = 0.35;
       send.connect(echo).connect(feedback).connect(echo);
       echo.connect(out);
-      // One amp per guitar, so their notes don't smear into one another. In the lobby the lead is
-      // barely overdriven and the low strings sit further back.
-      const amps =
+      // One amp per guitar, so their notes don't smear into one another. Recorded guitars already
+      // carry their amp's sound and go straight out at `level`.
+      const guitar = (sound: string, level: number, drive: number, ampLevel: number, ...to: AudioNode[]): Guitar => {
+        const direct = ctx.createGain();
+        direct.gain.value = level;
+        for (const node of to) direct.connect(node);
+        return { sound, direct, amp: amp(drive, ampLevel, ...to) };
+      };
+      // In the lobby the lead plays clean and the low strings sit further back.
+      const guitars =
         name === 'lobby'
-          ? { rhythm: amp(5, 0.045, fade), lead: amp(0.5, 0.12, fade), solo: amp(8, 0.05, fade, send) }
-          : { rhythm: amp(5, 0.08, fade), lead: amp(8, 0.045, fade), solo: amp(8, 0.06, fade, send) };
-      return { fade, out, amps };
+          ? {
+              rhythm: guitar('distortion_guitar', 0.05, 5, 0.045, fade),
+              lead: guitar('electric_guitar_clean', 0.12, 0.5, 0.12, fade),
+              solo: guitar('distortion_guitar', 0.07, 8, 0.05, fade, send),
+            }
+          : {
+              rhythm: guitar('distortion_guitar', 0.09, 5, 0.08, fade),
+              lead: guitar('distortion_guitar', 0.06, 8, 0.045, fade),
+              solo: guitar('distortion_guitar', 0.08, 8, 0.06, fade, send),
+            };
+      return { fade, out, guitars };
     };
     this.tunes = { lobby: outputs('lobby'), table: outputs('table') };
 
+    this.loadSamples();
     setInterval(() => this.scheduleMusic(), 250);
+  }
+
+  /** Fetches the recordings in the background. Until one arrives, its part is synthesized instead. */
+  private loadSamples(): void {
+    const ctx = this.ctx!;
+    const load = async (key: string, file: string) => {
+      try {
+        const response = await fetch(`${import.meta.env.BASE_URL}samples/${file}`);
+        if (!response.ok) return;
+        const buffer = await ctx.decodeAudioData(await response.arrayBuffer());
+        const data = buffer.getChannelData(0);
+        let peak = 0;
+        for (let i = 0; i < data.length; i++) peak = Math.max(peak, Math.abs(data[i]!));
+        if (!peak) return;
+        let first = 0;
+        while (Math.abs(data[first]!) < peak * 0.05) first++;
+        this.samples.set(key, { buffer, lead: Math.max(0, first / buffer.sampleRate - 0.002), gain: 1 / peak });
+      } catch {
+        /* missing or unreadable: the synthesized version keeps playing */
+      }
+    };
+    for (const [sound, [low, high]] of Object.entries(RECORDED)) {
+      for (let pitch = low; pitch <= high; pitch++) void load(`${sound}/${pitch}`, `${sound}/${pitch}.mp3`);
+    }
+    for (const drum of RECORDED_DRUMS) void load(`drums/${drum}`, `drums/${drum}.wav`);
+  }
+
+  /** Starts a recording at `t` and returns its source, so the caller can bend its pitch or stop it. */
+  private play(sample: Sample, t: number, level: number, to: AudioNode): AudioBufferSourceNode {
+    const ctx = this.ctx!;
+    const src = ctx.createBufferSource();
+    src.buffer = sample.buffer;
+    const g = ctx.createGain();
+    g.gain.value = sample.gain * level;
+    src.connect(g).connect(to);
+    src.start(t, sample.lead);
+    return src;
   }
 
   /** Switches the music, fading the old tune out under the new one. */
@@ -335,7 +415,10 @@ class SoundEngine {
   private playBar(name: TuneName, index: number, t: number): void {
     const tune = TUNES[name];
     const bar = tune.bars[index % tune.bars.length]!;
-    const { out, amps } = this.tunes![name];
+    const { fade, out, guitars } = this.tunes![name];
+    const snare = this.samples.get('drums/snare');
+    const hat = this.samples.get('drums/hat');
+    const crash = this.samples.get('drums/crash');
     const half = tune.beat / 2;
     const atTable = name === 'table';
     // Both tunes run in rounds of sixteen bars: the lead guitar opens alone over the ticking, and
@@ -347,36 +430,55 @@ class SoundEngine {
       // string, reaching a step higher every second bar.
       const [low, mid, high, neighbour, top] = bar.riff!;
       const figure = [low, top, mid, top, index % 2 ? neighbour : high, top, mid, top];
-      figure.forEach((pitch, slot) => this.strum([pitch], t + slot * half, half - 0.07, amps.lead));
+      figure.forEach((pitch, slot) => this.strum([pitch], t + slot * half, half - 0.07, guitars.lead));
     } else {
       // In the lobby it picks slowly up through the chord and back, letting the strings ring.
-      PICKING.forEach((string, slot) => this.strum([bar.chord[string]!], t + slot * half, 0.8, amps.lead));
+      PICKING.forEach((string, slot) => this.strum([bar.chord[string]!], t + slot * half, 0.8, guitars.lead));
     }
     for (let slot = 0; slot < 8; slot++) {
       const at = t + slot * half;
-      this.noiseBurst(at, 0.04).connect(this.filter('bandpass', 3200)).connect(this.envelope(at, slot % 2 ? 0.07 : 0.035, 0.002, 0.03, out));
+      if (hat) this.play(hat, at, slot % 2 ? 0.1 : 0.06, fade);
+      else this.noiseBurst(at, 0.04).connect(this.filter('bandpass', 3200)).connect(this.envelope(at, slot % 2 ? 0.07 : 0.035, 0.002, 0.03, out));
       if (!band) continue;
+      // A cymbal crash marks the band coming in.
+      if (crash && round === 2 && slot === 0) this.play(crash, at, 0.2, fade);
       if (slot % 4 === 0) this.tone('sine', 120, 45, at, 0.14).connect(this.envelope(at, 0.42, 0.004, 0.14, out));
-      if (slot % 4 === 2) this.noiseBurst(at, 0.14).connect(this.filter('bandpass', 1800, 0.8)).connect(this.envelope(at, 0.15, 0.003, 0.12, out));
+      if (slot % 4 === 2) {
+        if (snare) this.play(snare, at, 0.3, fade);
+        else this.noiseBurst(at, 0.14).connect(this.filter('bandpass', 1800, 0.8)).connect(this.envelope(at, 0.15, 0.003, 0.12, out));
+      }
       if (atTable) {
         // A softer kick lands with the guitar's off-beat accent, so the groove leans forward.
         if (slot === 3) this.tone('sine', 120, 45, at, 0.14).connect(this.envelope(at, 0.28, 0.004, 0.14, out));
-        this.note('triangle', bar.bass + BASS_LINE[slot]!, at, slot === 0 ? 0.2 : 0.13, 0.01, 0.3, out);
-        if (ACCENTS.includes(slot)) this.strum(bar.chord, at, half - 0.04, amps.rhythm);
-        else this.strum(bar.chord.slice(0, 2), at, 0.06, amps.rhythm, 'muted');
+        this.bassNote(bar.bass + BASS_LINE[slot]!, at, slot === 0 ? 0.2 : 0.13, 0.3, fade, out);
+        if (ACCENTS.includes(slot)) this.strum(bar.chord, at, half - 0.04, guitars.rhythm);
+        else this.strum(bar.chord.slice(0, 2), at, 0.06, guitars.rhythm, 'muted');
       } else if (slot === 0) {
         // One low octave growls under the whole bar, with the bass on the root.
-        this.strum([bar.bass, bar.bass + 12], at, tune.beat * 4 - 0.3, amps.rhythm);
-        this.note('triangle', bar.bass, at, 0.22, 0.03, 2.2, out);
+        this.strum([bar.bass, bar.bass + 12], at, tune.beat * 4 - 0.3, guitars.rhythm);
+        this.bassNote(bar.bass, at, 0.22, 2.2, fade, out);
       } else if (slot === 5) {
-        this.note('triangle', bar.bass, at, 0.12, 0.03, 1.2, out);
+        this.bassNote(bar.bass, at, 0.12, 1.2, fade, out);
       }
     }
     // A second guitar sings over the top: once the band is in for the lobby, and for the second
     // half of each round at the table.
     if (atTable ? round >= tune.bars.length : band) {
-      for (const [pitch, at] of this.wander(tune, bar, t)) this.strum([pitch], at, atTable ? 1.2 : 1.6, amps.solo, 'sung');
+      for (const [pitch, at] of this.wander(tune, bar, t)) this.strum([pitch], at, atTable ? 1.2 : 1.6, guitars.solo, 'sung');
     }
+  }
+
+  /** A bass guitar note lasting about `ring` seconds: the recording into `to`, or a plain tone into `muffled`. */
+  private bassNote(pitch: number, t: number, level: number, ring: number, to: AudioNode, muffled: AudioNode): void {
+    const sample = this.samples.get(`electric_bass_pick/${pitch}`);
+    if (!sample) return this.note('triangle', pitch, t, level, 0.01, ring, muffled);
+    const hand = this.ctx!.createGain();
+    hand.gain.setValueAtTime(1, t);
+    hand.gain.setTargetAtTime(0, t + ring * 0.6, 0.05);
+    hand.connect(to);
+    const src = this.play(sample, t, level * 2, hand);
+    this.wow!.connect(src.detune);
+    src.stop(t + ring + 0.3);
   }
 
   /** A few melody notes for a bar, each a small step from the last, so the tune never repeats exactly. */
@@ -394,29 +496,50 @@ class SoundEngine {
   }
 
   /**
-   * Guitar strings picked together into an amp, ringing for `ring` seconds before a hand stops
-   * them. 'muted' is the dull chug of strings damped at the bridge; 'sung' adds a player's vibrato.
+   * Guitar strings picked together, ringing for `ring` seconds before a hand stops them. 'muted'
+   * is the dull chug of strings damped at the bridge; 'sung' adds a player's vibrato. Each string
+   * is a recording if it has arrived, and a synthesized string through the guitar's amp if not.
    */
-  private strum(pitches: readonly number[], t: number, ring: number, amp: AudioNode, style: 'open' | 'muted' | 'sung' = 'open'): void {
+  private strum(pitches: readonly number[], t: number, ring: number, guitar: Guitar, style: 'open' | 'muted' | 'sung' = 'open'): void {
     const ctx = this.ctx!;
-    const hand = ctx.createGain();
-    hand.gain.setValueAtTime(1, t);
-    hand.gain.setTargetAtTime(0, t + ring, 0.03);
-    (style === 'muted' ? hand.connect(this.filter('lowpass', 1000)) : hand).connect(amp);
+    const muted = style === 'muted';
+    const hand = (to: AudioNode) => {
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(1, t);
+      g.gain.setTargetAtTime(0, t + ring, 0.03);
+      g.connect(to);
+      return g;
+    };
+    let recorded: GainNode | undefined;
+    let synthesized: GainNode | undefined;
     pitches.forEach((pitch, i) => {
-      const string = this.string(pitch);
-      const src = ctx.createBufferSource();
-      src.buffer = string.buffer;
-      src.playbackRate.value = string.rate;
-      // Past the end of the recording the string keeps sounding, held by the amp.
-      src.loop = true;
-      src.loopStart = string.loopStart;
-      src.loopEnd = string.buffer.duration;
+      // The pick crosses the strings one after another.
+      const at = t + i * 0.008;
+      const sample = this.samples.get(`${muted ? 'electric_guitar_muted' : guitar.sound}/${pitch}`);
+      let src: AudioBufferSourceNode;
+      if (sample) {
+        // Muted strings were recorded clean, so they still need the amp's overdrive.
+        recorded ??= hand(muted ? guitar.amp : guitar.direct);
+        src = this.play(sample, at, 1 / Math.sqrt(pitches.length), recorded);
+      } else {
+        if (!synthesized) {
+          const dull = this.filter('lowpass', 1000);
+          dull.connect(guitar.amp);
+          synthesized = hand(muted ? dull : guitar.amp);
+        }
+        const string = this.string(pitch);
+        src = ctx.createBufferSource();
+        src.buffer = string.buffer;
+        src.playbackRate.value = string.rate;
+        // Past the end of the buffer the string keeps sounding, held by the amp.
+        src.loop = true;
+        src.loopStart = string.loopStart;
+        src.loopEnd = string.buffer.duration;
+        src.connect(synthesized);
+        src.start(at);
+      }
       this.wow!.connect(src.detune);
       if (style === 'sung') this.vibrato!.connect(src.detune);
-      src.connect(hand);
-      // The pick crosses the strings one after another.
-      src.start(t + i * 0.008);
       src.stop(t + ring + 0.3);
     });
   }
