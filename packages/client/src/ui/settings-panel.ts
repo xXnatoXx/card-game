@@ -1,3 +1,4 @@
+import { t } from '../i18n.js';
 import { settings, updateSettings, type Settings } from '../settings.js';
 import { h } from './dom.js';
 
@@ -33,6 +34,7 @@ class SettingsPanel {
   }
 
   private render(): void {
+    const s = t();
     this.el.replaceChildren(
       h(
         'div',
@@ -40,20 +42,20 @@ class SettingsPanel {
         h(
           'div',
           { class: 'settings-head' },
-          h('h2', {}, 'Settings'),
-          h('button', { class: 'tiny', title: 'Close (Esc)', onclick: () => this.close() }, '✕'),
+          h('h2', {}, s.settings),
+          h('button', { class: 'tiny', title: s.close, onclick: () => this.close() }, '✕'),
         ),
-        h('h3', {}, 'Sound'),
-        this.slider('Master', 'master'),
-        this.slider('Effects', 'sfx'),
-        this.slider('Ambience', 'ambience'),
-        this.slider('Music', 'music'),
-        this.toggle('Mute everything', 'muted'),
-        h('h3', {}, 'Screen'),
-        this.toggle('CRT scanlines', 'crt'),
-        this.toggle('Reduced screen effects', 'reducedEffects', 'Less shake, flashing, glitching and lamp strobing.'),
-        this.toggle('Look around with the mouse', 'mouseLook'),
-        h('p', { class: 'settings-note' }, 'Saved in this browser.'),
+        h('h3', {}, s.sound),
+        this.slider(s.master, 'master'),
+        this.slider(s.effects, 'sfx'),
+        this.slider(s.ambience, 'ambience'),
+        this.slider(s.music, 'music'),
+        this.toggle(s.muteAll, 'muted'),
+        h('h3', {}, s.screen),
+        this.toggle(s.crt, 'crt'),
+        this.toggle(s.reducedEffects, 'reducedEffects', s.reducedEffectsHint),
+        this.toggle(s.mouseLook, 'mouseLook'),
+        h('p', { class: 'settings-note' }, s.savedHere),
       ),
     );
   }
@@ -98,5 +100,5 @@ export const settingsPanel = new SettingsPanel();
 
 /** A gear button that opens the settings. */
 export function settingsButton(extraClass = ''): HTMLButtonElement {
-  return h('button', { class: `gear ${extraClass}`.trim(), title: 'Settings', onclick: () => settingsPanel.open() }, '⚙');
+  return h('button', { class: `gear ${extraClass}`.trim(), title: t().settings, onclick: () => settingsPanel.open() }, '⚙');
 }

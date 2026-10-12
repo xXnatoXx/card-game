@@ -1,8 +1,9 @@
 import { RANKS, type Rank } from '@bluff/rules';
+import { t } from '../i18n.js';
 import { socket, store } from '../net.js';
 import type { TableScene } from '../scene/table-scene.js';
 import { SUIT_SYMBOL } from '../scene/cards.js';
-import { cardFace, claim, h, present, sortHand, type Screen } from './dom.js';
+import { cardFace, h, present, sortHand, type Screen } from './dom.js';
 import { settingsButton } from './settings-panel.js';
 import type { Feed, FeedItem } from './feed.js';
 
@@ -88,7 +89,7 @@ export class GameScreen implements Screen {
 
   private name(seat: number): string {
     const game = store.game;
-    if (game && seat === game.view.seat) return 'You';
+    if (game && seat === game.view.seat) return t().you;
     return game?.seats[seat]?.name ?? '?';
   }
 
@@ -173,8 +174,8 @@ export class GameScreen implements Screen {
     this.inspectInfo.replaceChildren(
       ...present(
         h('div', { class: 'inspect-count' }, String(n)),
-        h('div', { class: 'inspect-label' }, `card${n === 1 ? '' : 's'} in the pool`),
-        v.latest ? h('div', { class: 'inspect-latest' }, `${this.name(v.latest.player)}: "${claim(v.latest.count, v.latest.rank)}"`) : null,
+        h('div', { class: 'inspect-label' }, t().inPool(n)),
+        v.latest ? h('div', { class: 'inspect-latest' }, `${this.name(v.latest.player)}: "${t().claim(v.latest.count, v.latest.rank)}"`) : null,
       ),
     );
   }
@@ -183,18 +184,19 @@ export class GameScreen implements Screen {
 
   private renderTop(): void {
     const v = store.game!.view;
+    const s = t();
     this.top.replaceChildren(...present(
-      h('span', { title: 'Face-down cards in the pool' }, `▣ ${v.poolCount}`),
-      v.roundRank ? h('span', { class: 'latest', title: "This round's rank" }, v.roundRank) : null,
+      h('span', { title: s.poolHint }, `▣ ${v.poolCount}`),
+      v.roundRank ? h('span', { class: 'latest', title: s.roundRankHint }, v.roundRank) : null,
       settingsButton(),
       h(
         'button',
         {
           class: 'tiny',
-          title: 'Leave the table',
+          title: s.leaveTable,
           onclick: () => {
             const playing = store.room?.status === 'playing';
-            if (!playing || confirm('Leave the game? Your turns will be played for you.')) socket.emit('room:leave');
+            if (!playing || confirm(t().confirmLeave)) socket.emit('room:leave');
           },
         },
         '✕',
@@ -204,11 +206,12 @@ export class GameScreen implements Screen {
 
   private renderStatus(): void {
     const v = store.game!.view;
+    const s = t();
     let text: string;
-    if (v.winner !== null) text = v.winner === v.seat ? 'You won!' : `${this.name(v.winner)} won.`;
-    else if (this.stackPick) text = 'Click the card to hide it under. (Esc cancels)';
-    else if (v.canPlay) text = v.canPass ? 'Your turn: play cards, or pass.' : 'Your turn. You start this round, so you must play.';
-    else text = `Waiting for ${this.name(v.turn)}…${v.canCall ? '  You can inspect or call the last play.' : ''}`;
+    if (v.winner !== null) text = v.winner === v.seat ? s.youWon : s.wonStatus(this.name(v.winner));
+    else if (this.stackPick) text = s.pickCover;
+    else if (v.canPlay) text = v.canPass ? s.yourTurn : s.yourTurnMustPlay;
+    else text = `${s.waitingFor(this.name(v.turn))}${v.canCall ? `  ${s.canCall}` : ''}`;
     this.status.textContent = text;
     this.status.classList.toggle('mine', v.canPlay);
   }
@@ -233,7 +236,7 @@ export class GameScreen implements Screen {
         ...hidden.map((hid) =>
           cardFace(byId.get(hid)!, {
             class: 'tucked',
-            title: 'Hidden under this card',
+            title: t().hiddenUnder,
             onclick: (e: Event) => {
               e.stopPropagation();
               this.menuFor = this.menuFor === hid ? null : hid;
@@ -263,7 +266,7 @@ export class GameScreen implements Screen {
       ...present(
         h('div', { class: 'staged-row' }, ...groups),
         visible.length > this.maxVisible
-          ? h('div', { class: 'staging-note warn' }, `At most ${this.maxVisible} cards can be visible. Hide some under others.`)
+          ? h('div', { class: 'staging-note warn' }, t().tooManyVisible(this.maxVisible))
           : null,
       ),
     );
@@ -279,7 +282,7 @@ export class GameScreen implements Screen {
       'div',
       { class: 'menu' },
       canHide
-        ? h('button', { onclick: (e: Event) => this.menuAction(e, () => (this.stackPick = id)) }, 'Stack: hide under…')
+        ? h('button', { onclick: (e: Event) => this.menuAction(e, () => (this.stackPick = id)) }, t().stackUnder)
         : null,
       // The card(s) hidden under this one can be pulled back out from here too.
       ...hidden.map((hid) => {
@@ -287,10 +290,10 @@ export class GameScreen implements Screen {
         return h(
           'button',
           { onclick: (e: Event) => this.menuAction(e, () => this.stacks.delete(hid)) },
-          `Unstack ${c ? `${c.rank}${SUIT_SYMBOL[c.suit]}` : 'hidden card'}`,
+          t().unstackCard(c && `${c.rank}${SUIT_SYMBOL[c.suit]}`),
         );
       }),
-      h('button', { onclick: (e: Event) => this.menuAction(e, () => this.drop(id)) }, 'Take back'),
+      h('button', { onclick: (e: Event) => this.menuAction(e, () => this.drop(id)) }, t().takeBack),
     );
   }
 
@@ -298,8 +301,8 @@ export class GameScreen implements Screen {
     return h(
       'div',
       { class: 'menu' },
-      h('button', { onclick: (e: Event) => this.menuAction(e, () => this.stacks.delete(id)) }, 'Unstack'),
-      h('button', { onclick: (e: Event) => this.menuAction(e, () => this.drop(id)) }, 'Take back'),
+      h('button', { onclick: (e: Event) => this.menuAction(e, () => this.stacks.delete(id)) }, t().unstack),
+      h('button', { onclick: (e: Event) => this.menuAction(e, () => this.drop(id)) }, t().takeBack),
     );
   }
 
@@ -313,7 +316,7 @@ export class GameScreen implements Screen {
   private renderRanks(): void {
     const locked = store.game!.view.roundRank;
     this.ranks.replaceChildren(
-      h('span', { class: 'ranks-label' }, locked ? `This round is ${claim(2, locked).slice(2)}:` : 'You set the rank:'),
+      h('span', { class: 'ranks-label' }, locked ? t().roundIs(locked) : t().setRank),
       ...RANKS.map((r) =>
         h(
           'button',
@@ -337,27 +340,28 @@ export class GameScreen implements Screen {
     const visible = this.visibleIds.length;
     const canSend = v.canPlay && visible >= 1 && visible <= this.maxVisible && !this.stackPick;
     const latest = v.latest;
+    const s = t();
     this.actions.replaceChildren(...present(
       h(
         'button',
         { class: 'primary', disabled: !canSend, onclick: () => this.play(), title: 'Enter' },
-        visible ? `Play: "${claim(visible, this.rank)}"` : 'Choose cards to play',
+        visible ? s.play(s.claim(visible, this.rank)) : s.chooseCards,
       ),
       this.selected.length > 0
-        ? h('button', { class: 'quiet', onclick: () => this.clearSelection(), title: 'Delete' }, 'Clear')
+        ? h('button', { class: 'quiet', onclick: () => this.clearSelection(), title: 'Delete' }, s.clear)
         : null,
-      v.canPass ? h('button', { onclick: () => socket.emit('turn:pass'), title: 'P' }, 'Pass') : null,
+      v.canPass ? h('button', { onclick: () => socket.emit('turn:pass'), title: 'P' }, s.pass) : null,
       // While leaning in, Inspect becomes the way back.
       this.scene.inspecting
-        ? h('button', { class: 'active', onclick: () => this.toggleInspect(), title: 'I or Esc' }, '◂ Sit back')
+        ? h('button', { class: 'active', onclick: () => this.toggleInspect(), title: s.sitBackKeys }, s.sitBack)
         : v.canInspect
-          ? h('button', { onclick: () => this.toggleInspect(), title: 'I' }, 'Inspect')
+          ? h('button', { onclick: () => this.toggleInspect(), title: 'I' }, s.inspect)
           : null,
       v.canCall && latest
         ? h(
             'button',
             { class: 'danger', onclick: () => socket.emit('turn:callBluff'), title: 'B' },
-            `BLUFF! (${this.name(latest.player)}'s ${claim(latest.count, latest.rank)})`,
+            s.callBluff(this.name(latest.player), s.claim(latest.count, latest.rank)),
           )
         : null,
     ));
@@ -447,12 +451,12 @@ export class GameScreen implements Screen {
         const m = item.msg;
         const hidden = m.cards.length - m.announcedCount;
         this.reveal.replaceChildren(
-          h('h3', { class: m.wasBluff ? 'caught' : 'honest' }, m.wasBluff ? 'CAUGHT!' : 'FALSE ALARM'),
+          h('h3', { class: m.wasBluff ? 'caught' : 'honest' }, m.wasBluff ? t().caught : t().falseAlarm),
           h(
             'div',
             { class: 'reveal-cards' },
             ...m.cards.map((c) => cardFace(c, { class: c.rank === m.announcedRank ? '' : 'off' })),
-            hidden > 0 ? h('span', { class: 'stacked-chip', title: `${hidden} card(s) were stacked out of sight` }, `+${hidden}`) : null,
+            hidden > 0 ? h('span', { class: 'stacked-chip', title: t().stackedHint(hidden) }, `+${hidden}`) : null,
           ),
         );
         // Let the cards flip on the table first, then show the verdict.
@@ -470,9 +474,9 @@ export class GameScreen implements Screen {
           h(
             'div',
             { class: 'panel' },
-            h('h2', {}, item.winner === me ? 'You won!' : `${this.name(item.winner)} won`),
-            h('p', { class: 'muted' }, 'Their hand is empty.'),
-            h('button', { class: 'primary', onclick: () => this.closeResults() }, 'Back to the table'),
+            h('h2', {}, item.winner === me ? t().youWon : t().won(this.name(item.winner))),
+            h('p', { class: 'muted' }, t().handEmpty),
+            h('button', { class: 'primary', onclick: () => this.closeResults() }, t().backToTable),
           ),
         );
         window.setTimeout(() => this.over.classList.remove('hidden'), 1500);

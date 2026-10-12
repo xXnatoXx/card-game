@@ -1,4 +1,5 @@
 import { sound } from '../audio/sound.js';
+import { t } from '../i18n.js';
 import { store } from '../net.js';
 import type { Stage } from '../scene/stage.js';
 import type { TableScene } from '../scene/table-scene.js';
@@ -68,7 +69,7 @@ export class Labels {
       tag.timer = item.turn ? h('span', { class: 'label-timer' }) : null;
       tag.info.replaceChildren(
         h('div', { class: 'label-name' }, item.name),
-        h('div', { class: 'label-sub' }, item.away ? `${item.sub} (away)` : item.sub, tag.timer),
+        h('div', { class: 'label-sub' }, item.away ? t().awayTag(item.sub) : item.sub, tag.timer),
       );
     });
   }
@@ -96,7 +97,7 @@ export class Labels {
       tag.el.classList.toggle('edge', x !== px);
       tag.el.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px) translate(-50%, -100%)`;
       if (tag.timer) {
-        const text = deadline ? ` · ${Math.ceil(Math.max(0, deadline - Date.now()) / 1000)}s` : '';
+        const text = deadline ? ` · ${t().seconds(Math.ceil(Math.max(0, deadline - Date.now()) / 1000))}` : '';
         if (tag.timer.textContent !== text) tag.timer.textContent = text;
       }
       this.type(tag, now);

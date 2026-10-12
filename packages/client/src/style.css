@@ -20,6 +20,13 @@
   box-sizing: border-box;
 }
 
+/* VT323 has no Thai letters, so Thai (and only Thai) is set in a Thai font the system already has. */
+@font-face {
+  font-family: 'Thai';
+  src: local('Leelawadee UI'), local('Tahoma'), local('Noto Sans Thai'), local('Thonburi');
+  unicode-range: U+0E00-0E7F;
+}
+
 html,
 body {
   margin: 0;
@@ -27,8 +34,19 @@ body {
   overflow: hidden;
   background: var(--black);
   color: var(--pale);
-  font-family: 'VT323', ui-monospace, monospace;
+  font-family: 'VT323', 'Thai', ui-monospace, monospace;
   font-size: 22px;
+  line-height: 1.15;
+}
+
+/* Thai stacks vowels and tone marks above and below its letters, so its lines need more room. */
+html:lang(th),
+html:lang(th) body {
+  line-height: 1.35;
+}
+
+/* The name tags stay tight, or the lines typed above the far seats would run off the top of the picture. */
+html:lang(th) .label {
   line-height: 1.15;
 }
 
@@ -450,6 +468,36 @@ input:focus {
   text-align: center;
   color: var(--dim);
   margin: 0 0 14px;
+}
+
+/* The language switch in the lobby's top-left corner, across from the gear. */
+.lang.corner {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: flex;
+  gap: 2px;
+}
+
+/* Small enough to stay clear of the title's first letter. */
+.lang button {
+  padding: 0 5px;
+  font-size: 16px;
+  line-height: 1.3;
+  color: var(--dim);
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.lang button:hover:not(:disabled) {
+  color: var(--lamp-light);
+  background: transparent;
+}
+
+.lang button.on {
+  color: var(--lamp-light);
+  border-color: var(--felt-light);
 }
 
 .field {

@@ -1,4 +1,4 @@
-import { RANKS, type Card, type Rank } from '@bluff/rules';
+import { RANKS, type Card } from '@bluff/rules';
 import { SUIT_SYMBOL, isRed } from '../scene/cards.js';
 
 type Child = Node | string | number | null | undefined | false;
@@ -35,17 +35,6 @@ export interface Screen {
   destroy(): void;
 }
 
-const RANK_WORDS: Record<Rank, string> = {
-  A: 'ace', '2': 'two', '3': 'three', '4': 'four', '5': 'five', '6': 'six', '7': 'seven',
-  '8': 'eight', '9': 'nine', '10': 'ten', J: 'jack', Q: 'queen', K: 'king',
-};
-
-/** "1 ace", "4 aces", "2 sixes". */
-export function claim(count: number, rank: Rank): string {
-  const word = RANK_WORDS[rank];
-  return `${count} ${count === 1 ? word : word.endsWith('x') ? `${word}es` : `${word}s`}`;
-}
-
 export function sortHand(cards: readonly Card[]): Card[] {
   const suits = ['clubs', 'diamonds', 'hearts', 'spades'];
   return [...cards].sort(
@@ -67,8 +56,4 @@ export function cardFace(card: Card, props: Props = {}): HTMLDivElement {
     h('span', { class: 'suit' }, SUIT_SYMBOL[card.suit]),
     h('span', { class: 'pip' }, SUIT_SYMBOL[card.suit]),
   );
-}
-
-export function animalName(animal: string): string {
-  return animal === 'polar' ? 'Polar bear' : animal[0]!.toUpperCase() + animal.slice(1);
 }
