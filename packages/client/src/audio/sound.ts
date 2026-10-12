@@ -76,7 +76,7 @@ const TUNES: Record<TuneName, Tune> = {
   // Between games: eight slow bars in D minor that never quite settle. The lead climbs each chord
   // and comes back down.
   lobby: {
-    beat: 0.9,
+    beat: 0.8,
     melody: [0.55, 0.1, 0.3, 0.25, 0.45, 0.15, 0.35, 0.2],
     picking: [0, 1, 2, 3, 2, 1, 2, 3],
     bars: [
