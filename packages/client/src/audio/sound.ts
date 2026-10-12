@@ -59,6 +59,13 @@ interface Bar {
   lead: readonly number[];
 }
 
+/** One bar of drums, a character per sixteenth: X a full hit, x a softer one. A C among the hi-hats is a crash cymbal. */
+interface Beat {
+  kick: string;
+  snare: string;
+  hat: string;
+}
+
 export type TuneName = 'lobby' | 'table';
 
 interface Tune {
@@ -73,20 +80,57 @@ interface Tune {
    * bass notes, or lets the last one ring on (-).
    */
   bassLines: readonly string[];
+  /** The drums for each bar of a round. In a bar without any, the bass drops out too. */
+  drums: readonly (Beat | null)[];
   /** The chords, as MIDI notes. */
   bars: readonly Bar[];
 }
+
+/** Reads a line of music, a character per step: which note is struck, on which step, and for how many steps it rings. */
+function notesOf(line: string): [note: number, step: number, held: number][] {
+  const notes: [number, number, number][] = [];
+  for (let step = 0; step < line.length; step++) {
+    if (line[step] === '-') continue;
+    let held = 1;
+    while (line[step + held] === '-') held++;
+    notes.push([+line[step]!, step, held]);
+  }
+  return notes;
+}
+
+const HITS: Record<string, number> = { X: 1, x: 0.65 };
+/** The same bar of drums with a crash cymbal on its first beat, for where the band comes in. */
+const crashing = (beat: Beat): Beat => ({ ...beat, hat: 'C' + beat.hat.slice(1) });
+
+// The lobby's drums: a plain backbeat under ticking hi-hats, in some bars with a second kick after the third beat.
+const BACKBEAT: Beat = { kick: 'X.......X.......', snare: '....X.......X...', hat: 'x.X.x.X.x.X.x.X.' };
+const DOUBLED: Beat = { ...BACKBEAT, kick: 'X.......X.x.....' };
+
+// The table's drums. In half time the snare waits for the third beat, and the kick sometimes pushes
+// ahead of it; in full time the snare is on every second beat, and fills close the phrases.
+const HALF: Beat = { kick: 'X...............', snare: '........X.......', hat: 'X...X...X...X...' };
+const HALF_PUSHED: Beat = { ...HALF, kick: 'X.....x.........', hat: 'X...X...X...X.x.' };
+const HALF_BUSY: Beat = { ...HALF_PUSHED, kick: 'X..x..x.........' };
+const FULL: Beat = { kick: 'X.......X..x....', snare: '....X.......X...', hat: 'X...X...X...X...' };
+const FULL_BUSY: Beat = { ...FULL, kick: 'X..x....X..x....', snare: '....X.......X..x' };
+const FILL: Beat = { ...FULL, snare: '....X.......X.xx' };
+const BIG_FILL: Beat = { ...FULL_BUSY, snare: '....X.......xxxx' };
 
 // Both tunes are played by the same band: a heavy groove of drums, bass and overdriven guitars.
 const TUNES: Record<TuneName, Tune> = {
   // Between games: eight slow bars in D minor that never quite settle. The lead climbs each chord
   // and comes back down. The bass drives on each chord's root, and in the first two bars of every
-  // four flicks to a neighbouring note and back.
+  // four flicks to a neighbouring note on the last half beat. Half way through a round the drums
+  // and bass drop out for a bar.
   lobby: {
     beat: 0.8,
     melody: [0.55, 0.1, 0.3, 0.25, 0.45, 0.15, 0.35, 0.2],
     picking: [0, 1, 2, 3, 2, 1, 2, 3],
-    bassLines: ['00010000', '00010000', '00000000', '00000000'],
+    bassLines: ['00000001', '00000001', '00000000', '00000000'],
+    drums: [
+      BACKBEAT, DOUBLED, crashing(BACKBEAT), DOUBLED, BACKBEAT, BACKBEAT, DOUBLED, null,
+      crashing(BACKBEAT), DOUBLED, BACKBEAT, DOUBLED, BACKBEAT, BACKBEAT, DOUBLED, BACKBEAT,
+    ],
     bars: [
       { bass: [38, 41], chord: [38, 45, 50], melody: [62, 65, 69, 72, 74, 76], lead: [53, 57, 60, 64] }, // Dm9
       { bass: [46, 45], chord: [41, 46, 53], melody: [62, 65, 69, 70, 74], lead: [53, 57, 58, 62] }, // Bbmaj7
@@ -102,7 +146,8 @@ const TUNES: Record<TuneName, Tune> = {
   // every bar, then two bars that wind the tension back up. Every other note of the lead is on the
   // same string, and every second bar it reaches a step higher. The bass holds long roots, and
   // every second bar ends on a turn: up to a note of the chord twice, then home. For the second
-  // half of a round it drives in half beats, popping up an octave, and keeps the turn.
+  // half of a round it drives in half beats, popping up an octave, and keeps the turn. The drums
+  // play half time for the first half of a round and full time for the second.
   table: {
     beat: 0.66,
     melody: [0.35, 0, 0.1, 0, 0.25, 0, 0.15, 0.1],
@@ -110,6 +155,10 @@ const TUNES: Record<TuneName, Tune> = {
     bassLines: [
       '0---0220', '001-----', '0---0220', '001-----', '0-1-0220', '0-0-1---', '0---0220', '001-----',
       '00100220', '00100101', '00100220', '00100101', '00100220', '00100101', '00100220', '00100101',
+    ],
+    drums: [
+      HALF, HALF_PUSHED, crashing(HALF), HALF_PUSHED, HALF, HALF_BUSY, HALF, HALF_PUSHED,
+      crashing(FULL), FULL_BUSY, FULL, FILL, FULL, FULL_BUSY, FULL, BIG_FILL,
     ],
     bars: [
       { bass: [40, 52, 43], chord: [40, 47, 52], melody: [76, 78, 79, 83], lead: [64, 67, 71, 76] }, // Em
@@ -422,46 +471,54 @@ class SoundEngine {
     const tune = TUNES[name];
     const bar = tune.bars[index % tune.bars.length]!;
     const { fade, out, guitars } = this.tunes![name];
-    const snare = this.samples.get('drums/snare');
-    const hat = this.samples.get('drums/hat');
-    const crash = this.samples.get('drums/crash');
     const half = tune.beat / 2;
     const atTable = name === 'table';
     // Both tunes run in rounds of sixteen bars: the lead guitar opens alone over the ticking, and
     // the rest of the band comes in after two bars.
     const round = index % (tune.bars.length * 2);
     const band = round >= 2;
-    const line = tune.bassLines[round % tune.bassLines.length]!;
+    const beat = tune.drums[round];
     // The lead grinds out eight held notes a bar.
     tune.picking.forEach((string, slot) => this.strum([bar.lead[string]!], t + slot * half, half - 0.07, guitars.lead));
-    for (let slot = 0; slot < 8; slot++) {
-      const at = t + slot * half;
-      if (hat) this.play(hat, at, slot % 2 ? 0.1 : 0.06, fade);
-      else this.noiseBurst(at, 0.04).connect(this.filter('bandpass', 3200)).connect(this.envelope(at, slot % 2 ? 0.07 : 0.035, 0.002, 0.03, out));
-      if (!band) continue;
-      // A cymbal crash marks the band coming in.
-      if (crash && round === 2 && slot === 0) this.play(crash, at, 0.2, fade);
-      if (slot % 4 === 0) this.tone('sine', 120, 45, at, 0.14).connect(this.envelope(at, 0.42, 0.004, 0.14, out));
-      if (slot % 4 === 2) {
-        if (snare) this.play(snare, at, 0.3, fade);
-        else this.noiseBurst(at, 0.14).connect(this.filter('bandpass', 1800, 0.8)).connect(this.envelope(at, 0.15, 0.003, 0.12, out));
+    if (beat) this.drumBar(beat, t, tune.beat / 4, band, fade, out);
+    if (band && !beat) {
+      // A break: the rhythm guitar lets one chord ring where the drums and bass were.
+      this.strum(bar.chord, t, tune.beat * 4 - 0.3, guitars.rhythm);
+    } else if (band) {
+      // The bass holds each note until its next one.
+      for (const [note, slot, held] of notesOf(tune.bassLines[round % tune.bassLines.length]!)) {
+        this.bassNote(bar.bass[note]!, t + slot * half, slot === 0 ? 0.2 : 0.13, held * half - 0.03, fade, out);
       }
-      // A softer kick lands with the guitar's off-beat accent, so the groove leans forward.
-      if (slot === 3) this.tone('sine', 120, 45, at, 0.14).connect(this.envelope(at, 0.28, 0.004, 0.14, out));
-      const note = line[slot]!;
-      if (note !== '-') {
-        // The bass holds each note until its next one.
-        let held = 1;
-        while (line[slot + held] === '-') held++;
-        this.bassNote(bar.bass[+note]!, at, slot === 0 ? 0.2 : 0.13, held * half - 0.03, fade, out);
+      for (let slot = 0; slot < 8; slot++) {
+        if (ACCENTS.includes(slot)) this.strum(bar.chord, t + slot * half, half - 0.04, guitars.rhythm);
+        else this.strum(bar.chord.slice(0, 2), t + slot * half, 0.06, guitars.rhythm, 'muted');
       }
-      if (ACCENTS.includes(slot)) this.strum(bar.chord, at, half - 0.04, guitars.rhythm);
-      else this.strum(bar.chord.slice(0, 2), at, 0.06, guitars.rhythm, 'muted');
     }
     // A second guitar sings over the top: once the band is in for the lobby, and for the second
     // half of each round at the table.
     if (atTable ? round >= tune.bars.length : band) {
       for (const [pitch, at] of this.wander(tune, bar, t)) this.strum([pitch], at, atTable ? 1.2 : 1.6, guitars.solo, 'sung');
+    }
+  }
+
+  /** One bar of drums, a sixteenth at a time. Until the band is in, only the hi-hat ticks. */
+  private drumBar(beat: Beat, t: number, sixteenth: number, band: boolean, fade: AudioNode, out: AudioNode): void {
+    const snare = this.samples.get('drums/snare');
+    const hat = this.samples.get('drums/hat');
+    const crash = this.samples.get('drums/crash');
+    for (let step = 0; step < 16; step++) {
+      const at = t + step * sixteenth;
+      const tick = HITS[beat.hat[step]!];
+      // A cymbal crash marks the band coming in.
+      if (beat.hat[step] === 'C' && band && crash) this.play(crash, at, 0.2, fade);
+      else if (tick && hat) this.play(hat, at, 0.1 * tick, fade);
+      else if (tick) this.noiseBurst(at, 0.04).connect(this.filter('bandpass', 3200)).connect(this.envelope(at, 0.07 * tick, 0.002, 0.03, out));
+      if (!band) continue;
+      const kick = HITS[beat.kick[step]!];
+      if (kick) this.tone('sine', 120, 45, at, 0.14).connect(this.envelope(at, 0.42 * kick, 0.004, 0.14, out));
+      const hit = HITS[beat.snare[step]!];
+      if (hit && snare) this.play(snare, at, 0.3 * hit, fade);
+      else if (hit) this.noiseBurst(at, 0.14).connect(this.filter('bandpass', 1800, 0.8)).connect(this.envelope(at, 0.15 * hit, 0.003, 0.12, out));
     }
   }
 
