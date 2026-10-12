@@ -41,6 +41,8 @@ interface Bar {
   pad: readonly number[];
   /** Notes the melody may land on over this chord. */
   melody: readonly number[];
+  /** The table tune's piano figure: low, middle and high notes, the high note's neighbour, and the note hammered on top. */
+  riff?: readonly [number, number, number, number, number];
 }
 
 export type TuneName = 'lobby' | 'table';
@@ -70,24 +72,25 @@ const TUNES: Record<TuneName, Tune> = {
       { bass: 45, pad: [52, 55, 57, 61], melody: [61, 64, 67, 69, 73] }, // A7
     ],
   },
-  // While a game is on: eight faster bars in E minor over a pulsing bass.
+  // While a game is on, a battle of nerves: a restless piano figure in E minor over a bass that
+  // sinks a semitone every bar, then two bars that wind the tension back up.
   table: {
-    beat: 0.58,
-    melody: [0.6, 0.15, 0.35, 0.3, 0.5, 0.2, 0.4, 0.3],
+    beat: 0.48,
+    melody: [0.35, 0, 0.1, 0, 0.25, 0, 0.15, 0.1],
     bars: [
-      { bass: 40, pad: [52, 55, 59], melody: [64, 66, 67, 71, 74, 76] }, // Em
-      { bass: 40, pad: [52, 55, 59], melody: [64, 66, 67, 71, 74, 76] }, // Em
-      { bass: 36, pad: [52, 55, 60], melody: [64, 67, 71, 72, 76] }, // C
-      { bass: 38, pad: [54, 57, 62], melody: [62, 64, 66, 69, 74] }, // D
-      { bass: 40, pad: [52, 55, 59], melody: [64, 66, 67, 71, 74, 76] }, // Em
-      { bass: 40, pad: [52, 55, 59], melody: [64, 66, 67, 71, 74, 76] }, // Em
-      { bass: 45, pad: [52, 57, 60], melody: [64, 67, 69, 72, 76] }, // Am
-      { bass: 47, pad: [51, 54, 57], melody: [63, 66, 69, 71, 75] }, // B7
+      { bass: 40, pad: [52, 55, 59], melody: [76, 78, 79, 83], riff: [64, 67, 71, 72, 76] }, // Em
+      { bass: 39, pad: [51, 54, 59], melody: [75, 78, 83], riff: [63, 66, 71, 72, 75] }, // B/D#
+      { bass: 38, pad: [50, 55, 59], melody: [74, 79, 83], riff: [62, 67, 71, 72, 74] }, // G/D
+      { bass: 37, pad: [49, 52, 57], melody: [73, 76, 81], riff: [61, 64, 69, 70, 73] }, // A/C#
+      { bass: 36, pad: [48, 52, 55], melody: [72, 76, 79, 84], riff: [60, 64, 67, 68, 72] }, // C
+      { bass: 35, pad: [47, 52, 55], melody: [71, 76, 79, 83], riff: [59, 64, 67, 69, 71] }, // Em/B
+      { bass: 41, pad: [48, 53, 57], melody: [72, 77, 81], riff: [60, 65, 69, 70, 72] }, // F
+      { bass: 35, pad: [51, 54, 57], melody: [75, 78, 81, 83], riff: [59, 63, 66, 69, 71] }, // B7
     ],
   },
 };
-/** The table tune's bass line: semitones above the chord's root on each half beat. */
-const BASS_LINE = [0, 0, 12, 0, 0, 12, 0, 7];
+/** The table tune's bass line: semitones above the chord's bass note on each half beat. */
+const BASS_LINE = [0, 0, 12, 0, 0, 12, 0, 12];
 
 export interface Volumes {
   master: number;
@@ -104,7 +107,7 @@ class SoundEngine {
   private amb: GainNode | null = null;
   private music: GainNode | null = null;
   /** Each tune has its own output, so one can fade out under the other. */
-  private tunes: Record<TuneName, { out: GainNode; lead: GainNode }> | null = null;
+  private tunes: Record<TuneName, { out: GainNode; lead: GainNode; choir: GainNode }> | null = null;
   private tune: TuneName = 'lobby';
   private wow: GainNode | null = null;
   private noise: AudioBuffer | null = null;
@@ -222,7 +225,7 @@ class SoundEngine {
 
   /**
    * The music playing somewhere in the room, as if off a worn tape: muffled, a little unsteady in
-   * pitch, with an echo on the melody. Slow and uneasy between games, faster while one is on.
+   * pitch, with an echo on the melody. Slow and uneasy between games, urgent while one is on.
    */
   private startMusic(): void {
     const ctx = this.ctx!;
@@ -251,7 +254,10 @@ class SoundEngine {
       const lead = ctx.createGain();
       lead.connect(out);
       lead.connect(send);
-      return { out, lead };
+      // Two narrow bands turn a buzzing chord into something like voices singing "ah".
+      const choir = ctx.createGain();
+      for (const freq of [650, 1080]) choir.connect(this.filter('bandpass', freq, 4)).connect(out);
+      return { out, lead, choir };
     };
     this.tunes = { lobby: outputs('lobby'), table: outputs('table') };
 
@@ -289,7 +295,7 @@ class SoundEngine {
   private playBar(name: TuneName, index: number, t: number): void {
     const tune = TUNES[name];
     const bar = tune.bars[index % tune.bars.length]!;
-    const { out, lead } = this.tunes![name];
+    const { out, lead, choir } = this.tunes![name];
     const half = tune.beat / 2;
     if (name === 'lobby') {
       // Each chord breathes in and out, overlapping the next.
@@ -301,24 +307,35 @@ class SoundEngine {
       this.note('triangle', bar.bass, t, 0.22, 0.03, 2.2, out);
       this.note('triangle', bar.bass, t + tune.beat * 2.5, 0.12, 0.03, 1.2, out);
     } else {
-      // Each chord is struck on the bar, over a bass that keeps pushing.
+      // The tune runs in rounds of sixteen bars: two bars of piano and ticking alone, then the
+      // bass and drums come in, and voices join for the second half.
+      const round = index % (tune.bars.length * 2);
       for (const pitch of bar.pad) {
-        this.note('triangle', pitch, t, 0.04, 0.25, 2.6, out, -6);
-        this.note('sawtooth', pitch, t, 0.014, 0.25, 2.6, out, 6);
+        this.note('triangle', pitch, t, 0.035, 0.25, 2.2, out, -6);
+        this.note('sawtooth', pitch, t, 0.02, 0.25, 2.2, out, 6);
+        if (round >= tune.bars.length) this.note('sawtooth', pitch + 12, t, 0.05, 0.5, 2.4, choir);
       }
-      // A clock ticks throughout; the drums only join every second time round.
-      const drums = Math.floor(index / tune.bars.length) % 2 === 1;
+      // The piano never lets up: sixteen quick notes a bar, every other one hammering the same key.
+      const [low, mid, high, neighbour, top] = bar.riff!;
+      const turn = [low, mid, high, mid, low, mid, neighbour, mid];
+      for (let i = 0; i < 16; i++) {
+        const at = t + (i * half) / 2;
+        const pitch = i % 2 ? top : turn[i / 2]!;
+        const peak = i % 2 ? 0.06 : i % 8 === 0 ? 0.14 : 0.1;
+        this.note('triangle', pitch, at, peak, 0.004, 0.45, out);
+        this.note('sine', pitch + 12, at, peak / 4, 0.003, 0.15, out);
+      }
       BASS_LINE.forEach((step, slot) => {
         const at = t + slot * half;
-        this.note('triangle', bar.bass + step, at, slot === 0 ? 0.2 : 0.13, 0.01, 0.3, out);
         this.noiseBurst(at, 0.04).connect(this.filter('bandpass', 3200)).connect(this.envelope(at, slot % 2 ? 0.07 : 0.035, 0.002, 0.03, out));
-        if (!drums) return;
+        if (round < 2) return;
+        this.note('triangle', bar.bass + step, at, slot === 0 ? 0.2 : 0.13, 0.01, 0.3, out);
         if (slot % 4 === 0) this.tone('sine', 120, 45, at, 0.14).connect(this.envelope(at, 0.3, 0.004, 0.14, out));
         if (slot % 4 === 2) this.noiseBurst(at, 0.14).connect(this.filter('bandpass', 1800, 0.8)).connect(this.envelope(at, 0.08, 0.003, 0.12, out));
       });
     }
     // A few melody notes a bar, each a small step from the last, so it never repeats exactly.
-    const ring = name === 'lobby' ? 1.6 : 0.9;
+    const ring = name === 'lobby' ? 1.6 : 1.2;
     for (let slot = 0; slot < tune.melody.length; slot++) {
       if (Math.random() > tune.melody[slot]!) continue;
       const near = bar.melody.filter((p) => p !== this.lastPitch && Math.abs(p - this.lastPitch) <= 5);
