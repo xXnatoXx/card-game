@@ -49,7 +49,7 @@ const hz = (note: number) => 440 * 2 ** ((note - 69) / 12);
 
 interface Bar {
   bass: number;
-  /** The chord: a soft pad in the lobby, the rhythm guitar's strings at the table. */
+  /** The chord: picked a string at a time in the lobby, struck by the rhythm guitar at the table. */
   chord: readonly number[];
   /** Notes the melody may land on over this chord. */
   melody: readonly number[];
@@ -105,6 +105,8 @@ const TUNES: Record<TuneName, Tune> = {
 const BASS_LINE = [0, 0, 12, 0, 0, 12, 0, 12];
 /** The half beats where the rhythm guitar lets its chord ring; on the rest it chugs with the strings muted. */
 const ACCENTS = [0, 3, 6];
+/** The lobby tune's lead guitar: which note of the chord it picks on each half beat. */
+const PICKING = [0, 1, 2, 3, 2, 1, 2, 3];
 
 export interface Volumes {
   master: number;
@@ -121,11 +123,9 @@ class SoundEngine {
   private amb: GainNode | null = null;
   private music: GainNode | null = null;
   /** Each tune has its own output, so one can fade out under the other. */
-  private tunes: Record<TuneName, { fade: GainNode; out: AudioNode; lead: GainNode; send: GainNode }> | null = null;
+  private tunes: Record<TuneName, { fade: GainNode; out: AudioNode; amps: { rhythm: AudioNode; lead: AudioNode; solo: AudioNode } }> | null = null;
   private tune: TuneName = 'lobby';
-  /** The table band's guitar amps: one each, so their notes don't smear into one another. */
-  private amps: { rhythm: AudioNode; lead: AudioNode; solo: AudioNode } | null = null;
-  private strings = new Map<number, { buffer: AudioBuffer; rate: number }>();
+  private strings = new Map<number, { buffer: AudioBuffer; rate: number; loopStart: number }>();
   private wow: GainNode | null = null;
   private vibrato: GainNode | null = null;
   private noise: AudioBuffer | null = null;
@@ -242,8 +242,9 @@ class SoundEngine {
   // --- Music --------------------------------------------------------------------
 
   /**
-   * The music playing somewhere in the room, as if off a worn tape: muffled, a little unsteady in
-   * pitch, with an echo on the melody. Slow and uneasy between games; a band while one is on.
+   * The music: a band of drums, bass and overdriven guitars, a little unsteady in pitch like a
+   * worn tape, with an echo on the guitar that sings. Slow and uneasy between games, urgent while
+   * one is on.
    */
   private startMusic(): void {
     const ctx = this.ctx!;
@@ -259,28 +260,7 @@ class SoundEngine {
     this.wow = lfo(0.4, 5);
     this.vibrato = lfo(5.5, 14);
 
-    const outputs = (name: TuneName) => {
-      const fade = ctx.createGain();
-      fade.gain.value = name === this.tune ? 1 : 0;
-      fade.connect(this.music!);
-      const out = this.filter('lowpass', 2600, 0.5);
-      out.connect(fade);
-      const echo = ctx.createDelay(2);
-      echo.delayTime.value = TUNES[name].beat * 0.75;
-      const send = ctx.createGain();
-      send.gain.value = 0.4;
-      const feedback = ctx.createGain();
-      feedback.gain.value = 0.35;
-      send.connect(echo).connect(feedback).connect(echo);
-      echo.connect(out);
-      const lead = ctx.createGain();
-      lead.connect(out);
-      lead.connect(send);
-      return { fade, out, lead, send };
-    };
-    this.tunes = { lobby: outputs('lobby'), table: outputs('table') };
-
-    // A guitar amp: overdrive, then the narrow band of a speaker cabinet. It skips the tape's muffling.
+    // A guitar amp: overdrive, then the narrow band of a speaker cabinet.
     const overdrive = overdriveCurve();
     const amp = (drive: number, level: number, ...to: AudioNode[]) => {
       const input = ctx.createGain();
@@ -294,8 +274,31 @@ class SoundEngine {
       for (const node of to) output.connect(node);
       return input;
     };
-    const { fade, send } = this.tunes.table;
-    this.amps = { rhythm: amp(5, 0.08, fade), lead: amp(8, 0.045, fade), solo: amp(8, 0.06, fade, send) };
+
+    const outputs = (name: TuneName) => {
+      const fade = ctx.createGain();
+      fade.gain.value = name === this.tune ? 1 : 0;
+      fade.connect(this.music!);
+      // The drums and bass are muffled, as if heard through a wall.
+      const out = this.filter('lowpass', 2600, 0.5);
+      out.connect(fade);
+      const echo = ctx.createDelay(2);
+      echo.delayTime.value = TUNES[name].beat * 0.75;
+      const send = ctx.createGain();
+      send.gain.value = 0.4;
+      const feedback = ctx.createGain();
+      feedback.gain.value = 0.35;
+      send.connect(echo).connect(feedback).connect(echo);
+      echo.connect(out);
+      // One amp per guitar, so their notes don't smear into one another. In the lobby the lead is
+      // barely overdriven and the low strings sit further back.
+      const amps =
+        name === 'lobby'
+          ? { rhythm: amp(5, 0.045, fade), lead: amp(0.5, 0.12, fade), solo: amp(8, 0.05, fade, send) }
+          : { rhythm: amp(5, 0.08, fade), lead: amp(8, 0.045, fade), solo: amp(8, 0.06, fade, send) };
+      return { fade, out, amps };
+    };
+    this.tunes = { lobby: outputs('lobby'), table: outputs('table') };
 
     setInterval(() => this.scheduleMusic(), 250);
   }
@@ -331,42 +334,45 @@ class SoundEngine {
   private playBar(name: TuneName, index: number, t: number): void {
     const tune = TUNES[name];
     const bar = tune.bars[index % tune.bars.length]!;
-    const { out, lead } = this.tunes![name];
+    const { out, amps } = this.tunes![name];
     const half = tune.beat / 2;
-    if (name === 'lobby') {
-      // Each chord breathes in and out, overlapping the next.
-      for (const pitch of bar.chord) {
-        this.note('triangle', pitch, t, 0.045, 1.5, 4.2, out, -6);
-        this.note('sawtooth', pitch, t, 0.012, 1.5, 4.2, out, 6);
-      }
-      // The root on the first beat, and a quieter push towards the next bar.
-      this.note('triangle', bar.bass, t, 0.22, 0.03, 2.2, out);
-      this.note('triangle', bar.bass, t + tune.beat * 2.5, 0.12, 0.03, 1.2, out);
-      for (const [pitch, at] of this.wander(tune, bar, t)) {
-        this.note('sine', pitch, at, 0.14, 0.008, 1.6, lead);
-        this.note('sine', pitch + 12, at, 0.045, 0.005, 0.5, lead);
-      }
-      return;
-    }
-    // The band plays in rounds of sixteen bars: the lead guitar opens alone over the ticking, the
-    // rest crash in after two bars, and a second guitar sings over the top for the second half.
-    const amps = this.amps!;
+    const fast = name === 'table';
+    // Both tunes run in rounds of sixteen bars: the lead guitar opens alone over the ticking, and
+    // the rest of the band comes in after two bars.
     const round = index % (tune.bars.length * 2);
-    // The lead never lets up: sixteen quick notes a bar, every other one picking the same string.
-    const [low, mid, high, neighbour, top] = bar.riff!;
-    const turn = [low, mid, high, mid, low, mid, neighbour, mid];
-    for (let i = 0; i < 16; i++) this.strum([i % 2 ? top : turn[i / 2]!], t + (i * half) / 2, 0.09, amps.lead);
-    BASS_LINE.forEach((step, slot) => {
+    const band = round >= 2;
+    if (fast) {
+      // At the table the lead never lets up: sixteen quick notes a bar, every other one picking the same string.
+      const [low, mid, high, neighbour, top] = bar.riff!;
+      const turn = [low, mid, high, mid, low, mid, neighbour, mid];
+      for (let i = 0; i < 16; i++) this.strum([i % 2 ? top : turn[i / 2]!], t + (i * half) / 2, 0.09, amps.lead);
+    } else {
+      // In the lobby it picks slowly up through the chord and back, letting the strings ring.
+      PICKING.forEach((string, slot) => this.strum([bar.chord[string]!], t + slot * half, 0.8, amps.lead));
+    }
+    for (let slot = 0; slot < 8; slot++) {
       const at = t + slot * half;
       this.noiseBurst(at, 0.04).connect(this.filter('bandpass', 3200)).connect(this.envelope(at, slot % 2 ? 0.07 : 0.035, 0.002, 0.03, out));
-      if (round < 2) return;
-      this.note('triangle', bar.bass + step, at, slot === 0 ? 0.2 : 0.13, 0.01, 0.3, out);
-      if (ACCENTS.includes(slot)) this.strum(bar.chord, at, half - 0.04, amps.rhythm);
-      else this.strum(bar.chord.slice(0, 2), at, 0.06, amps.rhythm, 'muted');
+      if (!band) continue;
       if (slot % 4 === 0) this.tone('sine', 120, 45, at, 0.14).connect(this.envelope(at, 0.42, 0.004, 0.14, out));
       if (slot % 4 === 2) this.noiseBurst(at, 0.14).connect(this.filter('bandpass', 1800, 0.8)).connect(this.envelope(at, 0.15, 0.003, 0.12, out));
-    });
-    if (round >= tune.bars.length) for (const [pitch, at] of this.wander(tune, bar, t)) this.strum([pitch], at, 1, amps.solo, 'sung');
+      if (fast) {
+        this.note('triangle', bar.bass + BASS_LINE[slot]!, at, slot === 0 ? 0.2 : 0.13, 0.01, 0.3, out);
+        if (ACCENTS.includes(slot)) this.strum(bar.chord, at, half - 0.04, amps.rhythm);
+        else this.strum(bar.chord.slice(0, 2), at, 0.06, amps.rhythm, 'muted');
+      } else if (slot === 0) {
+        // One low octave growls under the whole bar, with the bass on the root.
+        this.strum([bar.bass, bar.bass + 12], at, tune.beat * 4 - 0.3, amps.rhythm);
+        this.note('triangle', bar.bass, at, 0.22, 0.03, 2.2, out);
+      } else if (slot === 5) {
+        this.note('triangle', bar.bass, at, 0.12, 0.03, 1.2, out);
+      }
+    }
+    // A second guitar sings over the top: once the band is in for the lobby, and for the second
+    // half of each round at the table.
+    if (fast ? round >= tune.bars.length : band) {
+      for (const [pitch, at] of this.wander(tune, bar, t)) this.strum([pitch], at, fast ? 1 : 1.6, amps.solo, 'sung');
+    }
   }
 
   /** A few melody notes for a bar, each a small step from the last, so the tune never repeats exactly. */
@@ -398,6 +404,10 @@ class SoundEngine {
       const src = ctx.createBufferSource();
       src.buffer = string.buffer;
       src.playbackRate.value = string.rate;
+      // Past the end of the recording the string keeps sounding, held by the amp.
+      src.loop = true;
+      src.loopStart = string.loopStart;
+      src.loopEnd = string.buffer.duration;
       this.wow!.connect(src.detune);
       if (style === 'sung') this.vibrato!.connect(src.detune);
       src.connect(hand);
@@ -412,7 +422,7 @@ class SoundEngine {
    * as the note's wavelength, losing a little brightness each pass, as a real string does
    * (Karplus-Strong). The delay is a whole number of samples, so `rate` nudges it into tune.
    */
-  private string(pitch: number): { buffer: AudioBuffer; rate: number } {
+  private string(pitch: number): { buffer: AudioBuffer; rate: number; loopStart: number } {
     let string = this.strings.get(pitch);
     if (string) return string;
     const ctx = this.ctx!;
@@ -429,18 +439,19 @@ class SoundEngine {
     }
     for (let i = 0; i < period; i++) data[i] = (data[i]! - sum / period) * 1.5;
     for (let i = period; i < data.length; i++) data[i] = 0.5 * (data[i - period]! + data[i - period + 1]!);
-    string = { buffer, rate: (hz(pitch) * (period - 0.5)) / ctx.sampleRate };
+    // Two turns of the string take a whole number of samples, so the last two loop without a click.
+    const loopStart = (data.length - (2 * period - 1)) / ctx.sampleRate;
+    string = { buffer, rate: (hz(pitch) * (period - 0.5)) / ctx.sampleRate, loopStart };
     this.strings.set(pitch, string);
     return string;
   }
 
   /** One note of the tune: `swell` seconds to reach `peak`, then `fade` seconds to die away. */
-  private note(type: OscillatorType, pitch: number, t: number, peak: number, swell: number, fade: number, to: AudioNode, cents = 0): void {
+  private note(type: OscillatorType, pitch: number, t: number, peak: number, swell: number, fade: number, to: AudioNode): void {
     const ctx = this.ctx!;
     const o = ctx.createOscillator();
     o.type = type;
     o.frequency.value = hz(pitch);
-    o.detune.value = cents;
     this.wow!.connect(o.detune);
     const g = ctx.createGain();
     g.gain.setValueAtTime(0, t);
