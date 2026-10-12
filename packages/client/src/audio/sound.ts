@@ -49,8 +49,9 @@ const rand = (min: number, max: number) => min + Math.random() * (max - min);
 const hz = (note: number) => 440 * 2 ** ((note - 69) / 12);
 
 interface Bar {
-  bass: number;
-  /** The rhythm guitar's chord. It chugs on the two lowest strings, and the bass guitar jumps up to the top one. */
+  /** The bass guitar's notes: the root, two more from the chord, and a step that leads into the next bar. */
+  bass: readonly number[];
+  /** The rhythm guitar's chord. It chugs on the two lowest strings. */
   chord: readonly number[];
   /** Notes the melody may land on over this chord. */
   melody: readonly number[];
@@ -80,14 +81,14 @@ const TUNES: Record<TuneName, Tune> = {
     melody: [0.55, 0.1, 0.3, 0.25, 0.45, 0.15, 0.35, 0.2],
     picking: [0, 1, 2, 3, 2, 1, 2, 3],
     bars: [
-      { bass: 38, chord: [38, 45, 50], melody: [62, 65, 69, 72, 74, 76], lead: [53, 57, 60, 64] }, // Dm9
-      { bass: 46, chord: [41, 46, 53], melody: [62, 65, 69, 70, 74], lead: [53, 57, 58, 62] }, // Bbmaj7
-      { bass: 43, chord: [38, 43, 50], melody: [62, 65, 67, 70, 74], lead: [53, 55, 58, 62] }, // Gm7
-      { bass: 45, chord: [40, 45, 52], melody: [61, 64, 67, 70, 73], lead: [52, 55, 58, 61] }, // A7b9
-      { bass: 38, chord: [38, 45, 50], melody: [62, 65, 69, 72, 74, 76], lead: [53, 57, 60, 64] }, // Dm9
-      { bass: 46, chord: [41, 46, 53], melody: [62, 65, 69, 70, 74], lead: [53, 57, 58, 62] }, // Bbmaj7
-      { bass: 40, chord: [40, 46, 52], melody: [62, 64, 67, 70, 74], lead: [52, 55, 58, 62] }, // Em7b5
-      { bass: 45, chord: [40, 45, 52], melody: [61, 64, 67, 69, 73], lead: [52, 55, 57, 61] }, // A7
+      { bass: [38, 41, 50, 45], chord: [38, 45, 50], melody: [62, 65, 69, 72, 74, 76], lead: [53, 57, 60, 64] }, // Dm9
+      { bass: [46, 50, 53, 45], chord: [41, 46, 53], melody: [62, 65, 69, 70, 74], lead: [53, 57, 58, 62] }, // Bbmaj7
+      { bass: [43, 46, 50, 46], chord: [38, 43, 50], melody: [62, 65, 67, 70, 74], lead: [53, 55, 58, 62] }, // Gm7
+      { bass: [45, 49, 52, 37], chord: [40, 45, 52], melody: [61, 64, 67, 70, 73], lead: [52, 55, 58, 61] }, // A7b9
+      { bass: [38, 41, 50, 45], chord: [38, 45, 50], melody: [62, 65, 69, 72, 74, 76], lead: [53, 57, 60, 64] }, // Dm9
+      { bass: [46, 50, 53, 41], chord: [41, 46, 53], melody: [62, 65, 69, 70, 74], lead: [53, 57, 58, 62] }, // Bbmaj7
+      { bass: [40, 43, 52, 46], chord: [40, 46, 52], melody: [62, 64, 67, 70, 74], lead: [52, 55, 58, 62] }, // Em7b5
+      { bass: [45, 49, 52, 37], chord: [40, 45, 52], melody: [61, 64, 67, 69, 73], lead: [52, 55, 57, 61] }, // A7
     ],
   },
   // While a game is on, a battle of nerves in E minor, unhurried, over a bass that sinks a semitone
@@ -98,19 +99,21 @@ const TUNES: Record<TuneName, Tune> = {
     melody: [0.35, 0, 0.1, 0, 0.25, 0, 0.15, 0.1],
     picking: [0, 3, 1, 3, 2, 3, 1, 3],
     bars: [
-      { bass: 40, chord: [40, 47, 52], melody: [76, 78, 79, 83], lead: [64, 67, 71, 76] }, // Em
-      { bass: 39, chord: [39, 47, 51], melody: [75, 78, 83], lead: [63, 66, 72, 75] }, // B/D#
-      { bass: 38, chord: [38, 43, 50], melody: [74, 79, 83], lead: [62, 67, 71, 74] }, // G/D
-      { bass: 37, chord: [37, 45, 49], melody: [73, 76, 81], lead: [61, 64, 70, 73] }, // A/C#
-      { bass: 36, chord: [36, 43, 48], melody: [72, 76, 79, 84], lead: [60, 64, 67, 72] }, // C
-      { bass: 35, chord: [35, 40, 47], melody: [71, 76, 79, 83], lead: [59, 64, 69, 71] }, // Em/B
-      { bass: 41, chord: [41, 48, 53], melody: [72, 77, 81], lead: [60, 65, 69, 72] }, // F
-      { bass: 35, chord: [35, 42, 47], melody: [75, 78, 81, 83], lead: [59, 63, 69, 71] }, // B7
+      { bass: [40, 47, 52, 38], chord: [40, 47, 52], melody: [76, 78, 79, 83], lead: [64, 67, 71, 76] }, // Em
+      { bass: [39, 47, 51, 37], chord: [39, 47, 51], melody: [75, 78, 83], lead: [63, 66, 72, 75] }, // B/D#
+      { bass: [38, 43, 50, 36], chord: [38, 43, 50], melody: [74, 79, 83], lead: [62, 67, 71, 74] }, // G/D
+      { bass: [37, 45, 49, 35], chord: [37, 45, 49], melody: [73, 76, 81], lead: [61, 64, 70, 73] }, // A/C#
+      { bass: [36, 43, 48, 40], chord: [36, 43, 48], melody: [72, 76, 79, 84], lead: [60, 64, 67, 72] }, // C
+      { bass: [35, 43, 47, 40], chord: [35, 40, 47], melody: [71, 76, 79, 83], lead: [59, 64, 69, 71] }, // Em/B
+      { bass: [41, 48, 53, 36], chord: [41, 48, 53], melody: [72, 77, 81], lead: [60, 65, 69, 72] }, // F
+      { bass: [35, 42, 47, 39], chord: [35, 42, 47], melody: [75, 78, 81, 83], lead: [59, 63, 69, 71] }, // B7
     ],
   },
 };
-/** The half beats where the bass guitar jumps from the bar's bass note to the top of the rhythm guitar's chord. */
-const BASS_JUMPS = [2, 5, 7];
+/** The bass guitar's lines. On each half beat it plays one of the bar's bass notes, or lets the last one ring on (-). */
+const BASS_LINES = ['00200202', '0--0-12-', '00112213', '0-01-123', '01210123', '0-2-0-13'];
+/** Which line it plays in each bar of a round: never the same one twice running, nor twice over the same chord. */
+const BASS_ROUND = [0, 0, 0, 3, 1, 0, 2, 4, 0, 5, 1, 4, 0, 3, 5, 2];
 /** The half beats where the rhythm guitar lets its chord ring; on the rest it chugs with the strings muted. */
 const ACCENTS = [0, 3, 6];
 
@@ -419,6 +422,7 @@ class SoundEngine {
     // the rest of the band comes in after two bars.
     const round = index % (tune.bars.length * 2);
     const band = round >= 2;
+    const line = BASS_LINES[BASS_ROUND[round]!]!;
     // The lead grinds out eight held notes a bar.
     tune.picking.forEach((string, slot) => this.strum([bar.lead[string]!], t + slot * half, half - 0.07, guitars.lead));
     for (let slot = 0; slot < 8; slot++) {
@@ -435,7 +439,13 @@ class SoundEngine {
       }
       // A softer kick lands with the guitar's off-beat accent, so the groove leans forward.
       if (slot === 3) this.tone('sine', 120, 45, at, 0.14).connect(this.envelope(at, 0.28, 0.004, 0.14, out));
-      this.bassNote(BASS_JUMPS.includes(slot) ? bar.chord[2]! : bar.bass, at, slot === 0 ? 0.2 : 0.13, half - 0.03, fade, out);
+      const note = line[slot]!;
+      if (note !== '-') {
+        // The bass holds each note until its next one.
+        let held = 1;
+        while (line[slot + held] === '-') held++;
+        this.bassNote(bar.bass[+note]!, at, slot === 0 ? 0.2 : 0.13, held * half - 0.03, fade, out);
+      }
       if (ACCENTS.includes(slot)) this.strum(bar.chord, at, half - 0.04, guitars.rhythm);
       else this.strum(bar.chord.slice(0, 2), at, 0.06, guitars.rhythm, 'muted');
     }
