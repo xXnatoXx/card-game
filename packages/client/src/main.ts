@@ -89,6 +89,7 @@ function route(): void {
   const playing = !!game && game.view.winner === null;
   if (playing && !wasPlaying) sound.shuffle();
   wasPlaying = playing;
+  sound.setTune(playing ? 'table' : 'lobby');
 
   const inGame = !!room && !!game && (room.status === 'playing' || resultsOpen);
   const next: Kind = !room ? 'lobby' : inGame ? 'game' : 'room';

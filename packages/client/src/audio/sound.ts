@@ -43,21 +43,51 @@ interface Bar {
   melody: readonly number[];
 }
 
-/** The tune's chords, as MIDI notes: eight slow bars in D minor that never quite settle. */
-const BARS: readonly Bar[] = [
-  { bass: 38, pad: [53, 57, 60, 64], melody: [62, 65, 69, 72, 74, 76] }, // Dm9
-  { bass: 46, pad: [53, 57, 58, 62], melody: [62, 65, 69, 70, 74] }, // Bbmaj7
-  { bass: 43, pad: [53, 55, 58, 62], melody: [62, 65, 67, 70, 74] }, // Gm7
-  { bass: 45, pad: [52, 55, 58, 61], melody: [61, 64, 67, 70, 73] }, // A7b9
-  { bass: 38, pad: [53, 57, 60, 64], melody: [62, 65, 69, 72, 74, 76] }, // Dm9
-  { bass: 46, pad: [53, 57, 58, 62], melody: [62, 65, 69, 70, 74] }, // Bbmaj7
-  { bass: 40, pad: [52, 55, 58, 62], melody: [62, 64, 67, 70, 74] }, // Em7b5
-  { bass: 45, pad: [52, 55, 57, 61], melody: [61, 64, 67, 69, 73] }, // A7
-];
-/** Seconds per beat; four beats to a bar. */
-const BEAT = 0.9;
-/** How likely the melody is to play on each half beat of a bar. */
-const MELODY_CHANCE = [0.55, 0.1, 0.3, 0.25, 0.45, 0.15, 0.35, 0.2];
+export type TuneName = 'lobby' | 'table';
+
+interface Tune {
+  /** Seconds per beat; four beats to a bar. */
+  beat: number;
+  /** How likely the melody is to play on each half beat of a bar. */
+  melody: readonly number[];
+  /** The chords, as MIDI notes. */
+  bars: readonly Bar[];
+}
+
+const TUNES: Record<TuneName, Tune> = {
+  // Between games: eight slow bars in D minor that never quite settle.
+  lobby: {
+    beat: 0.9,
+    melody: [0.55, 0.1, 0.3, 0.25, 0.45, 0.15, 0.35, 0.2],
+    bars: [
+      { bass: 38, pad: [53, 57, 60, 64], melody: [62, 65, 69, 72, 74, 76] }, // Dm9
+      { bass: 46, pad: [53, 57, 58, 62], melody: [62, 65, 69, 70, 74] }, // Bbmaj7
+      { bass: 43, pad: [53, 55, 58, 62], melody: [62, 65, 67, 70, 74] }, // Gm7
+      { bass: 45, pad: [52, 55, 58, 61], melody: [61, 64, 67, 70, 73] }, // A7b9
+      { bass: 38, pad: [53, 57, 60, 64], melody: [62, 65, 69, 72, 74, 76] }, // Dm9
+      { bass: 46, pad: [53, 57, 58, 62], melody: [62, 65, 69, 70, 74] }, // Bbmaj7
+      { bass: 40, pad: [52, 55, 58, 62], melody: [62, 64, 67, 70, 74] }, // Em7b5
+      { bass: 45, pad: [52, 55, 57, 61], melody: [61, 64, 67, 69, 73] }, // A7
+    ],
+  },
+  // While a game is on: eight faster bars in E minor over a pulsing bass.
+  table: {
+    beat: 0.58,
+    melody: [0.6, 0.15, 0.35, 0.3, 0.5, 0.2, 0.4, 0.3],
+    bars: [
+      { bass: 40, pad: [52, 55, 59], melody: [64, 66, 67, 71, 74, 76] }, // Em
+      { bass: 40, pad: [52, 55, 59], melody: [64, 66, 67, 71, 74, 76] }, // Em
+      { bass: 36, pad: [52, 55, 60], melody: [64, 67, 71, 72, 76] }, // C
+      { bass: 38, pad: [54, 57, 62], melody: [62, 64, 66, 69, 74] }, // D
+      { bass: 40, pad: [52, 55, 59], melody: [64, 66, 67, 71, 74, 76] }, // Em
+      { bass: 40, pad: [52, 55, 59], melody: [64, 66, 67, 71, 74, 76] }, // Em
+      { bass: 45, pad: [52, 57, 60], melody: [64, 67, 69, 72, 76] }, // Am
+      { bass: 47, pad: [51, 54, 57], melody: [63, 66, 69, 71, 75] }, // B7
+    ],
+  },
+};
+/** The table tune's bass line: semitones above the chord's root on each half beat. */
+const BASS_LINE = [0, 0, 12, 0, 0, 12, 0, 7];
 
 export interface Volumes {
   master: number;
@@ -73,8 +103,9 @@ class SoundEngine {
   private sfx: GainNode | null = null;
   private amb: GainNode | null = null;
   private music: GainNode | null = null;
-  private musicIn: AudioNode | null = null;
-  private lead: GainNode | null = null;
+  /** Each tune has its own output, so one can fade out under the other. */
+  private tunes: Record<TuneName, { out: GainNode; lead: GainNode }> | null = null;
+  private tune: TuneName = 'lobby';
   private wow: GainNode | null = null;
   private noise: AudioBuffer | null = null;
   private brown: AudioBuffer | null = null;
@@ -190,14 +221,13 @@ class SoundEngine {
   // --- Music --------------------------------------------------------------------
 
   /**
-   * The tune playing somewhere in the room: slow chords, a low bass and a melody that wanders, as
-   * if off a worn tape (muffled, a little unsteady in pitch, with an echo on the melody).
+   * The music playing somewhere in the room, as if off a worn tape: muffled, a little unsteady in
+   * pitch, with an echo on the melody. Slow and uneasy between games, faster while one is on.
    */
   private startMusic(): void {
     const ctx = this.ctx!;
     const warm = this.filter('lowpass', 2600, 0.5);
     warm.connect(this.music!);
-    this.musicIn = warm;
 
     const flutter = ctx.createOscillator();
     flutter.frequency.value = 0.4;
@@ -206,19 +236,38 @@ class SoundEngine {
     flutter.connect(this.wow);
     flutter.start();
 
-    const echo = ctx.createDelay(2);
-    echo.delayTime.value = BEAT * 0.75;
-    const send = ctx.createGain();
-    send.gain.value = 0.4;
-    const feedback = ctx.createGain();
-    feedback.gain.value = 0.35;
-    send.connect(echo).connect(feedback).connect(echo);
-    echo.connect(warm);
-    this.lead = ctx.createGain();
-    this.lead.connect(warm);
-    this.lead.connect(send);
+    const outputs = (name: TuneName) => {
+      const out = ctx.createGain();
+      out.gain.value = name === this.tune ? 1 : 0;
+      out.connect(warm);
+      const echo = ctx.createDelay(2);
+      echo.delayTime.value = TUNES[name].beat * 0.75;
+      const send = ctx.createGain();
+      send.gain.value = 0.4;
+      const feedback = ctx.createGain();
+      feedback.gain.value = 0.35;
+      send.connect(echo).connect(feedback).connect(echo);
+      echo.connect(out);
+      const lead = ctx.createGain();
+      lead.connect(out);
+      lead.connect(send);
+      return { out, lead };
+    };
+    this.tunes = { lobby: outputs('lobby'), table: outputs('table') };
 
     setInterval(() => this.scheduleMusic(), 250);
+  }
+
+  /** Switches the music, fading the old tune out under the new one. */
+  setTune(tune: TuneName): void {
+    if (tune === this.tune) return;
+    this.tune = tune;
+    this.bar = 0;
+    this.nextBar = 0;
+    if (!this.ctx || !this.tunes) return;
+    for (const name of Object.keys(this.tunes) as TuneName[]) {
+      this.tunes[name].out.gain.setTargetAtTime(name === tune ? 1 : 0, this.ctx.currentTime, 0.4);
+    }
   }
 
   /** Queues the next bar a little before it is due. */
@@ -231,32 +280,54 @@ class SoundEngine {
     }
     if (this.nextBar < now) this.nextBar = now + 0.1;
     while (this.nextBar < now + 2) {
-      this.playBar(BARS[this.bar % BARS.length]!, this.nextBar);
+      this.playBar(this.tune, this.bar, this.nextBar);
       this.bar++;
-      this.nextBar += BEAT * 4;
+      this.nextBar += TUNES[this.tune].beat * 4;
     }
   }
 
-  private playBar(bar: Bar, t: number): void {
-    const to = this.musicIn!;
-    // Each chord breathes in and out, overlapping the next.
-    for (const pitch of bar.pad) {
-      this.note('triangle', pitch, t, 0.045, 1.5, 4.2, to, -6);
-      this.note('sawtooth', pitch, t, 0.012, 1.5, 4.2, to, 6);
+  private playBar(name: TuneName, index: number, t: number): void {
+    const tune = TUNES[name];
+    const bar = tune.bars[index % tune.bars.length]!;
+    const { out, lead } = this.tunes![name];
+    const half = tune.beat / 2;
+    if (name === 'lobby') {
+      // Each chord breathes in and out, overlapping the next.
+      for (const pitch of bar.pad) {
+        this.note('triangle', pitch, t, 0.045, 1.5, 4.2, out, -6);
+        this.note('sawtooth', pitch, t, 0.012, 1.5, 4.2, out, 6);
+      }
+      // The root on the first beat, and a quieter push towards the next bar.
+      this.note('triangle', bar.bass, t, 0.22, 0.03, 2.2, out);
+      this.note('triangle', bar.bass, t + tune.beat * 2.5, 0.12, 0.03, 1.2, out);
+    } else {
+      // Each chord is struck on the bar, over a bass that keeps pushing.
+      for (const pitch of bar.pad) {
+        this.note('triangle', pitch, t, 0.04, 0.25, 2.6, out, -6);
+        this.note('sawtooth', pitch, t, 0.014, 0.25, 2.6, out, 6);
+      }
+      // A clock ticks throughout; the drums only join every second time round.
+      const drums = Math.floor(index / tune.bars.length) % 2 === 1;
+      BASS_LINE.forEach((step, slot) => {
+        const at = t + slot * half;
+        this.note('triangle', bar.bass + step, at, slot === 0 ? 0.2 : 0.13, 0.01, 0.3, out);
+        this.noiseBurst(at, 0.04).connect(this.filter('bandpass', 3200)).connect(this.envelope(at, slot % 2 ? 0.07 : 0.035, 0.002, 0.03, out));
+        if (!drums) return;
+        if (slot % 4 === 0) this.tone('sine', 120, 45, at, 0.14).connect(this.envelope(at, 0.3, 0.004, 0.14, out));
+        if (slot % 4 === 2) this.noiseBurst(at, 0.14).connect(this.filter('bandpass', 1800, 0.8)).connect(this.envelope(at, 0.08, 0.003, 0.12, out));
+      });
     }
-    // The root on the first beat, and a quieter push towards the next bar.
-    this.note('triangle', bar.bass, t, 0.22, 0.03, 2.2, to);
-    this.note('triangle', bar.bass, t + BEAT * 2.5, 0.12, 0.03, 1.2, to);
     // A few melody notes a bar, each a small step from the last, so it never repeats exactly.
-    for (let slot = 0; slot < MELODY_CHANCE.length; slot++) {
-      if (Math.random() > MELODY_CHANCE[slot]!) continue;
+    const ring = name === 'lobby' ? 1.6 : 0.9;
+    for (let slot = 0; slot < tune.melody.length; slot++) {
+      if (Math.random() > tune.melody[slot]!) continue;
       const near = bar.melody.filter((p) => p !== this.lastPitch && Math.abs(p - this.lastPitch) <= 5);
       const pool = near.length ? near : bar.melody;
       const pitch = pool[Math.floor(Math.random() * pool.length)]!;
       this.lastPitch = pitch;
-      const at = t + (slot * BEAT) / 2 + rand(0, 0.02);
-      this.note('sine', pitch, at, 0.14, 0.008, 1.6, this.lead!);
-      this.note('sine', pitch + 12, at, 0.045, 0.005, 0.5, this.lead!);
+      const at = t + slot * half + rand(0, 0.02);
+      this.note('sine', pitch, at, 0.14, 0.008, ring, lead);
+      this.note('sine', pitch + 12, at, 0.045, 0.005, ring / 3, lead);
     }
   }
 
@@ -283,12 +354,12 @@ class SoundEngine {
     return this.ctx && this.sfx && this.noise ? this.ctx : null;
   }
 
-  private envelope(t: number, peak: number, attack: number, decay: number): GainNode {
+  private envelope(t: number, peak: number, attack: number, decay: number, to: AudioNode = this.sfx!): GainNode {
     const g = this.ctx!.createGain();
     g.gain.setValueAtTime(0.0001, t);
     g.gain.exponentialRampToValueAtTime(Math.max(0.0002, peak), t + attack);
     g.gain.exponentialRampToValueAtTime(0.0001, t + attack + decay);
-    g.connect(this.sfx!);
+    g.connect(to);
     return g;
   }
 
