@@ -84,10 +84,11 @@ const TUNES: Record<TuneName, Tune> = {
       { bass: 45, chord: [52, 55, 57, 61], melody: [61, 64, 67, 69, 73] }, // A7
     ],
   },
-  // While a game is on, a battle of nerves played by a band: drums, bass and overdriven guitars in
-  // E minor, over a bass that sinks a semitone every bar, then two bars that wind the tension back up.
+  // While a game is on, a battle of nerves played by a band: a heavy, unhurried groove of drums,
+  // bass and overdriven guitars in E minor, over a bass that sinks a semitone every bar, then two
+  // bars that wind the tension back up.
   table: {
-    beat: 0.48,
+    beat: 0.66,
     melody: [0.35, 0, 0.1, 0, 0.25, 0, 0.15, 0.1],
     bars: [
       { bass: 40, chord: [40, 47, 52], melody: [76, 78, 79, 83], riff: [64, 67, 71, 72, 76] }, // Em
@@ -336,16 +337,17 @@ class SoundEngine {
     const bar = tune.bars[index % tune.bars.length]!;
     const { out, amps } = this.tunes![name];
     const half = tune.beat / 2;
-    const fast = name === 'table';
+    const atTable = name === 'table';
     // Both tunes run in rounds of sixteen bars: the lead guitar opens alone over the ticking, and
     // the rest of the band comes in after two bars.
     const round = index % (tune.bars.length * 2);
     const band = round >= 2;
-    if (fast) {
-      // At the table the lead never lets up: sixteen quick notes a bar, every other one picking the same string.
+    if (atTable) {
+      // At the table the lead grinds out eight held notes a bar, every other one on the same
+      // string, reaching a step higher every second bar.
       const [low, mid, high, neighbour, top] = bar.riff!;
-      const turn = [low, mid, high, mid, low, mid, neighbour, mid];
-      for (let i = 0; i < 16; i++) this.strum([i % 2 ? top : turn[i / 2]!], t + (i * half) / 2, 0.09, amps.lead);
+      const figure = [low, top, mid, top, index % 2 ? neighbour : high, top, mid, top];
+      figure.forEach((pitch, slot) => this.strum([pitch], t + slot * half, half - 0.07, amps.lead));
     } else {
       // In the lobby it picks slowly up through the chord and back, letting the strings ring.
       PICKING.forEach((string, slot) => this.strum([bar.chord[string]!], t + slot * half, 0.8, amps.lead));
@@ -356,7 +358,9 @@ class SoundEngine {
       if (!band) continue;
       if (slot % 4 === 0) this.tone('sine', 120, 45, at, 0.14).connect(this.envelope(at, 0.42, 0.004, 0.14, out));
       if (slot % 4 === 2) this.noiseBurst(at, 0.14).connect(this.filter('bandpass', 1800, 0.8)).connect(this.envelope(at, 0.15, 0.003, 0.12, out));
-      if (fast) {
+      if (atTable) {
+        // A softer kick lands with the guitar's off-beat accent, so the groove leans forward.
+        if (slot === 3) this.tone('sine', 120, 45, at, 0.14).connect(this.envelope(at, 0.28, 0.004, 0.14, out));
         this.note('triangle', bar.bass + BASS_LINE[slot]!, at, slot === 0 ? 0.2 : 0.13, 0.01, 0.3, out);
         if (ACCENTS.includes(slot)) this.strum(bar.chord, at, half - 0.04, amps.rhythm);
         else this.strum(bar.chord.slice(0, 2), at, 0.06, amps.rhythm, 'muted');
@@ -370,8 +374,8 @@ class SoundEngine {
     }
     // A second guitar sings over the top: once the band is in for the lobby, and for the second
     // half of each round at the table.
-    if (fast ? round >= tune.bars.length : band) {
-      for (const [pitch, at] of this.wander(tune, bar, t)) this.strum([pitch], at, fast ? 1 : 1.6, amps.solo, 'sung');
+    if (atTable ? round >= tune.bars.length : band) {
+      for (const [pitch, at] of this.wander(tune, bar, t)) this.strum([pitch], at, atTable ? 1.2 : 1.6, amps.solo, 'sung');
     }
   }
 
