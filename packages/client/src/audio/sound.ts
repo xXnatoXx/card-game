@@ -53,7 +53,7 @@ interface Bar {
   bass: readonly number[];
   /** The rhythm guitar's chord. It chugs on the two lowest strings. */
   chord: readonly number[];
-  /** Notes the melody may land on over this chord. */
+  /** The four notes the singing guitar's phrase picks between, lowest first. */
   melody: readonly number[];
   /** The four notes the lead guitar picks between, lowest first. */
   lead: readonly number[];
@@ -71,8 +71,6 @@ export type TuneName = 'lobby' | 'table';
 interface Tune {
   /** Seconds per beat; four beats to a bar. */
   beat: number;
-  /** How likely the melody is to play on each half beat of a bar. */
-  melody: readonly number[];
   /** Which of the bar's lead notes the lead guitar picks on each half beat. */
   picking: readonly number[];
   /**
@@ -80,6 +78,11 @@ interface Tune {
    * bass notes, or lets the last one ring on (-).
    */
   bassLines: readonly string[];
+  /**
+   * The singing guitar's phrase over each chord, a character per sixteenth: one of the bar's melody
+   * notes, - to hold it, or . for silence.
+   */
+  phrases: readonly string[];
   /** The drums for each bar of a round. In a bar without any, the bass drops out too. */
   drums: readonly (Beat | null)[];
   /** The chords, as MIDI notes. */
@@ -90,7 +93,7 @@ interface Tune {
 function notesOf(line: string): [note: number, step: number, held: number][] {
   const notes: [number, number, number][] = [];
   for (let step = 0; step < line.length; step++) {
-    if (line[step] === '-') continue;
+    if (line[step] === '-' || line[step] === '.') continue;
     let held = 1;
     while (line[step + held] === '-') held++;
     notes.push([+line[step]!, step, held]);
@@ -121,25 +124,29 @@ const TUNES: Record<TuneName, Tune> = {
   // Between games: eight slow bars in D minor that never quite settle. The lead climbs each chord
   // and comes back down. The bass drives on each chord's root, and in the first two bars of every
   // four flicks to a neighbouring note on the last half beat. Half way through a round the drums
-  // and bass drop out for a bar.
+  // and bass drop out for a bar. The singing guitar's riff keeps coming back to the same low note,
+  // and every second bar answers it.
   lobby: {
     beat: 0.8,
-    melody: [0.55, 0.1, 0.3, 0.25, 0.45, 0.15, 0.35, 0.2],
     picking: [0, 1, 2, 3, 2, 1, 2, 3],
     bassLines: ['00000001', '00000001', '00000000', '00000000'],
+    phrases: [
+      '0-0-3-0-1-0-3---', '........3-2-1-0-', '0-0-3-0-1-0-3---', '........3-2-1-0-',
+      '0-0-3-0-1-0-3---', '........0-1-2-3-', '0-0-3-0-1-0-3---', '3---2---1---0---',
+    ],
     drums: [
       BACKBEAT, DOUBLED, crashing(BACKBEAT), DOUBLED, BACKBEAT, BACKBEAT, DOUBLED, null,
       crashing(BACKBEAT), DOUBLED, BACKBEAT, DOUBLED, BACKBEAT, BACKBEAT, DOUBLED, BACKBEAT,
     ],
     bars: [
-      { bass: [38, 41], chord: [38, 45, 50], melody: [62, 65, 69, 72, 74, 76], lead: [53, 57, 60, 64] }, // Dm9
-      { bass: [46, 45], chord: [41, 46, 53], melody: [62, 65, 69, 70, 74], lead: [53, 57, 58, 62] }, // Bbmaj7
-      { bass: [43], chord: [38, 43, 50], melody: [62, 65, 67, 70, 74], lead: [53, 55, 58, 62] }, // Gm7
-      { bass: [45], chord: [40, 45, 52], melody: [61, 64, 67, 70, 73], lead: [52, 55, 58, 61] }, // A7b9
-      { bass: [38, 41], chord: [38, 45, 50], melody: [62, 65, 69, 72, 74, 76], lead: [53, 57, 60, 64] }, // Dm9
-      { bass: [46, 45], chord: [41, 46, 53], melody: [62, 65, 69, 70, 74], lead: [53, 57, 58, 62] }, // Bbmaj7
-      { bass: [40], chord: [40, 46, 52], melody: [62, 64, 67, 70, 74], lead: [52, 55, 58, 62] }, // Em7b5
-      { bass: [45], chord: [40, 45, 52], melody: [61, 64, 67, 69, 73], lead: [52, 55, 57, 61] }, // A7
+      { bass: [38, 41], chord: [38, 45, 50], melody: [74, 77, 79, 81], lead: [53, 57, 60, 64] }, // Dm9
+      { bass: [46, 45], chord: [41, 46, 53], melody: [74, 77, 81, 82], lead: [53, 57, 58, 62] }, // Bbmaj7
+      { bass: [43], chord: [38, 43, 50], melody: [74, 77, 79, 82], lead: [53, 55, 58, 62] }, // Gm7
+      { bass: [45], chord: [40, 45, 52], melody: [73, 76, 79, 81], lead: [52, 55, 58, 61] }, // A7b9
+      { bass: [38, 41], chord: [38, 45, 50], melody: [74, 77, 79, 81], lead: [53, 57, 60, 64] }, // Dm9
+      { bass: [46, 45], chord: [41, 46, 53], melody: [74, 77, 81, 82], lead: [53, 57, 58, 62] }, // Bbmaj7
+      { bass: [40], chord: [40, 46, 52], melody: [74, 76, 79, 82], lead: [52, 55, 58, 62] }, // Em7b5
+      { bass: [45], chord: [40, 45, 52], melody: [73, 76, 79, 81], lead: [52, 55, 57, 61] }, // A7
     ],
   },
   // While a game is on, a battle of nerves in E minor, unhurried, over a bass that sinks a semitone
@@ -147,27 +154,31 @@ const TUNES: Record<TuneName, Tune> = {
   // same string, and every second bar it reaches a step higher. The bass holds long roots, and
   // every second bar ends on a turn: up to a note of the chord twice, then home. For the second
   // half of a round it drives in half beats, popping up an octave, and keeps the turn. The drums
-  // play half time for the first half of a round and full time for the second.
+  // play half time for the first half of a round and full time for the second, when the singing
+  // guitar joins with a riff on the bottom of each chord and an answer every second bar.
   table: {
     beat: 0.66,
-    melody: [0.35, 0, 0.1, 0, 0.25, 0, 0.15, 0.1],
     picking: [0, 3, 1, 3, 2, 3, 1, 3],
     bassLines: [
       '0---0220', '001-----', '0---0220', '001-----', '0-1-0220', '0-0-1---', '0---0220', '001-----',
       '00100220', '00100101', '00100220', '00100101', '00100220', '00100101', '00100220', '00100101',
+    ],
+    phrases: [
+      '0-0-1-0-2-1-0---', '........0-1-3---', '0-0-1-0-2-1-0---', '........1-2-3---',
+      '0-0-1-0-2-1-0---', '........3-2-1-0-', '0-0-1-0-3-2-3---', '3---2---1-2-3---',
     ],
     drums: [
       HALF, HALF_PUSHED, crashing(HALF), HALF_PUSHED, HALF, HALF_BUSY, HALF, HALF_PUSHED,
       crashing(FULL), FULL_BUSY, FULL, FILL, FULL, FULL_BUSY, FULL, BIG_FILL,
     ],
     bars: [
-      { bass: [40, 52, 43], chord: [40, 47, 52], melody: [76, 78, 79, 83], lead: [64, 67, 71, 76] }, // Em
-      { bass: [39, 51], chord: [39, 47, 51], melody: [75, 78, 83], lead: [63, 66, 72, 75] }, // B/D#
-      { bass: [38, 50, 43], chord: [38, 43, 50], melody: [74, 79, 83], lead: [62, 67, 71, 74] }, // G/D
-      { bass: [37, 49], chord: [37, 45, 49], melody: [73, 76, 81], lead: [61, 64, 70, 73] }, // A/C#
-      { bass: [36, 48, 40], chord: [36, 43, 48], melody: [72, 76, 79, 84], lead: [60, 64, 67, 72] }, // C
-      { bass: [35, 47], chord: [35, 40, 47], melody: [71, 76, 79, 83], lead: [59, 64, 69, 71] }, // Em/B
-      { bass: [41, 53, 45], chord: [41, 48, 53], melody: [72, 77, 81], lead: [60, 65, 69, 72] }, // F
+      { bass: [40, 52, 43], chord: [40, 47, 52], melody: [76, 79, 81, 83], lead: [64, 67, 71, 76] }, // Em
+      { bass: [39, 51], chord: [39, 47, 51], melody: [75, 78, 81, 83], lead: [63, 66, 72, 75] }, // B/D#
+      { bass: [38, 50, 43], chord: [38, 43, 50], melody: [74, 79, 81, 83], lead: [62, 67, 71, 74] }, // G/D
+      { bass: [37, 49], chord: [37, 45, 49], melody: [73, 76, 79, 81], lead: [61, 64, 70, 73] }, // A/C#
+      { bass: [36, 48, 40], chord: [36, 43, 48], melody: [72, 76, 79, 81], lead: [60, 64, 67, 72] }, // C
+      { bass: [35, 47], chord: [35, 40, 47], melody: [76, 79, 81, 83], lead: [59, 64, 69, 71] }, // Em/B
+      { bass: [41, 53, 45], chord: [41, 48, 53], melody: [72, 77, 79, 81], lead: [60, 65, 69, 72] }, // F
       { bass: [35, 47], chord: [35, 42, 47], melody: [75, 78, 81, 83], lead: [59, 63, 69, 71] }, // B7
     ],
   },
@@ -225,7 +236,6 @@ class SoundEngine {
   private lastBeatPhase = 1;
   private bar = 0;
   private nextBar = 0;
-  private lastPitch = 69;
 
   constructor() {
     // Browsers only allow audio after the player does something.
@@ -497,7 +507,10 @@ class SoundEngine {
     // A second guitar sings over the top: once the band is in for the lobby, and for the second
     // half of each round at the table.
     if (atTable ? round >= tune.bars.length : band) {
-      for (const [pitch, at] of this.wander(tune, bar, t)) this.strum([pitch], at, atTable ? 1.2 : 1.6, guitars.solo, 'sung');
+      const sixteenth = tune.beat / 4;
+      for (const [note, step, held] of notesOf(tune.phrases[index % tune.phrases.length]!)) {
+        this.strum([bar.melody[note]!], t + step * sixteenth, held * sixteenth - 0.04, guitars.solo, 'sung');
+      }
     }
   }
 
@@ -533,20 +546,6 @@ class SoundEngine {
     const src = this.play(sample, t, level, hand);
     this.wow!.connect(src.detune);
     src.stop(t + ring + 0.3);
-  }
-
-  /** A few melody notes for a bar, each a small step from the last, so the tune never repeats exactly. */
-  private wander(tune: Tune, bar: Bar, t: number): [pitch: number, at: number][] {
-    const notes: [number, number][] = [];
-    for (let slot = 0; slot < tune.melody.length; slot++) {
-      if (Math.random() > tune.melody[slot]!) continue;
-      const near = bar.melody.filter((p) => p !== this.lastPitch && Math.abs(p - this.lastPitch) <= 5);
-      const pool = near.length ? near : bar.melody;
-      const pitch = pool[Math.floor(Math.random() * pool.length)]!;
-      this.lastPitch = pitch;
-      notes.push([pitch, t + (slot * tune.beat) / 2 + rand(0, 0.02)]);
-    }
-    return notes;
   }
 
   /**
