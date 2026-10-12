@@ -1,4 +1,5 @@
 import '@fontsource/vt323';
+import '@fontsource/chakra-petch/thai-500.css';
 import './style.css';
 import { sound } from './audio/sound.js';
 import { direct } from './director.js';

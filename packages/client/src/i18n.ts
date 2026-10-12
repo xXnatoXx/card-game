@@ -36,7 +36,6 @@ const en = {
   connecting: 'Connecting to the table…',
 
   // --- Lobby ---
-  tagline: 'Lie well. Look closely. Call it.',
   yourName: 'Your name',
   tables: 'Tables',
   tableName: 'Table name',
@@ -210,11 +209,10 @@ const th: Strings = {
   away: 'ไม่อยู่',
   connecting: 'กำลังเชื่อมต่อกับโต๊ะ…',
 
-  tagline: 'โกหกให้เนียน มองให้ขาด จับให้ได้',
   yourName: 'ชื่อของคุณ',
   tables: 'โต๊ะ',
   tableName: 'ชื่อโต๊ะ',
-  tableOf: (name) => `โต๊ะของ ${name}`,
+  tableOf: (name) => `โต๊ะ ${name}`,
   doubleMode: 'โหมด x2',
   doubleHint: 'โหมด x2: สับไพ่สองสำรับรวมกัน สำรับที่สองพิมพ์สีกลับ',
   doubleTag: 'ไพ่สองสำรับ สำรับที่สองเป็นสีกลับ',

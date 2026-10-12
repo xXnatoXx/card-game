@@ -48,7 +48,6 @@ export class LobbyScreen implements Screen {
       this.languageSwitch(),
       settingsButton('corner'),
       h('h1', { class: 'title' }, h('span', { class: 'title-false' }, 'FALSE'), ' ', h('span', { class: 'title-alarm' }, 'ALARM')),
-      h('p', { class: 'tagline' }, s.tagline),
       h('label', { class: 'field' }, h('span', {}, s.yourName), this.nameInput),
       h('h2', {}, s.tables),
       this.list,
