@@ -31,6 +31,17 @@ function crushCurve(steps: number): Float32Array<ArrayBuffer> {
   return curve;
 }
 
+/** Squashes loud input flat, the way an overdriven guitar amp does. */
+function overdriveCurve(): Float32Array<ArrayBuffer> {
+  const n = 2048;
+  const curve = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * 2 - 1;
+    curve[i] = Math.tanh(3 * x);
+  }
+  return curve;
+}
+
 const rand = (min: number, max: number) => min + Math.random() * (max - min);
 
 /** MIDI note number to frequency. */
@@ -38,10 +49,11 @@ const hz = (note: number) => 440 * 2 ** ((note - 69) / 12);
 
 interface Bar {
   bass: number;
-  pad: readonly number[];
+  /** The chord: a soft pad in the lobby, the rhythm guitar's strings at the table. */
+  chord: readonly number[];
   /** Notes the melody may land on over this chord. */
   melody: readonly number[];
-  /** The table tune's piano figure: low, middle and high notes, the high note's neighbour, and the note hammered on top. */
+  /** The lead guitar's figure at the table: low, middle and high notes, the high note's neighbour, and the note picked in between. */
   riff?: readonly [number, number, number, number, number];
 }
 
@@ -62,35 +74,37 @@ const TUNES: Record<TuneName, Tune> = {
     beat: 0.9,
     melody: [0.55, 0.1, 0.3, 0.25, 0.45, 0.15, 0.35, 0.2],
     bars: [
-      { bass: 38, pad: [53, 57, 60, 64], melody: [62, 65, 69, 72, 74, 76] }, // Dm9
-      { bass: 46, pad: [53, 57, 58, 62], melody: [62, 65, 69, 70, 74] }, // Bbmaj7
-      { bass: 43, pad: [53, 55, 58, 62], melody: [62, 65, 67, 70, 74] }, // Gm7
-      { bass: 45, pad: [52, 55, 58, 61], melody: [61, 64, 67, 70, 73] }, // A7b9
-      { bass: 38, pad: [53, 57, 60, 64], melody: [62, 65, 69, 72, 74, 76] }, // Dm9
-      { bass: 46, pad: [53, 57, 58, 62], melody: [62, 65, 69, 70, 74] }, // Bbmaj7
-      { bass: 40, pad: [52, 55, 58, 62], melody: [62, 64, 67, 70, 74] }, // Em7b5
-      { bass: 45, pad: [52, 55, 57, 61], melody: [61, 64, 67, 69, 73] }, // A7
+      { bass: 38, chord: [53, 57, 60, 64], melody: [62, 65, 69, 72, 74, 76] }, // Dm9
+      { bass: 46, chord: [53, 57, 58, 62], melody: [62, 65, 69, 70, 74] }, // Bbmaj7
+      { bass: 43, chord: [53, 55, 58, 62], melody: [62, 65, 67, 70, 74] }, // Gm7
+      { bass: 45, chord: [52, 55, 58, 61], melody: [61, 64, 67, 70, 73] }, // A7b9
+      { bass: 38, chord: [53, 57, 60, 64], melody: [62, 65, 69, 72, 74, 76] }, // Dm9
+      { bass: 46, chord: [53, 57, 58, 62], melody: [62, 65, 69, 70, 74] }, // Bbmaj7
+      { bass: 40, chord: [52, 55, 58, 62], melody: [62, 64, 67, 70, 74] }, // Em7b5
+      { bass: 45, chord: [52, 55, 57, 61], melody: [61, 64, 67, 69, 73] }, // A7
     ],
   },
-  // While a game is on, a battle of nerves: a restless piano figure in E minor over a bass that
-  // sinks a semitone every bar, then two bars that wind the tension back up.
+  // While a game is on, a battle of nerves played by a band: drums, bass and overdriven guitars in
+  // E minor, over a bass that sinks a semitone every bar, then two bars that wind the tension back up.
   table: {
     beat: 0.48,
     melody: [0.35, 0, 0.1, 0, 0.25, 0, 0.15, 0.1],
     bars: [
-      { bass: 40, pad: [52, 55, 59], melody: [76, 78, 79, 83], riff: [64, 67, 71, 72, 76] }, // Em
-      { bass: 39, pad: [51, 54, 59], melody: [75, 78, 83], riff: [63, 66, 71, 72, 75] }, // B/D#
-      { bass: 38, pad: [50, 55, 59], melody: [74, 79, 83], riff: [62, 67, 71, 72, 74] }, // G/D
-      { bass: 37, pad: [49, 52, 57], melody: [73, 76, 81], riff: [61, 64, 69, 70, 73] }, // A/C#
-      { bass: 36, pad: [48, 52, 55], melody: [72, 76, 79, 84], riff: [60, 64, 67, 68, 72] }, // C
-      { bass: 35, pad: [47, 52, 55], melody: [71, 76, 79, 83], riff: [59, 64, 67, 69, 71] }, // Em/B
-      { bass: 41, pad: [48, 53, 57], melody: [72, 77, 81], riff: [60, 65, 69, 70, 72] }, // F
-      { bass: 35, pad: [51, 54, 57], melody: [75, 78, 81, 83], riff: [59, 63, 66, 69, 71] }, // B7
+      { bass: 40, chord: [40, 47, 52], melody: [76, 78, 79, 83], riff: [64, 67, 71, 72, 76] }, // Em
+      { bass: 39, chord: [39, 47, 51], melody: [75, 78, 83], riff: [63, 66, 71, 72, 75] }, // B/D#
+      { bass: 38, chord: [38, 43, 50], melody: [74, 79, 83], riff: [62, 67, 71, 72, 74] }, // G/D
+      { bass: 37, chord: [37, 45, 49], melody: [73, 76, 81], riff: [61, 64, 69, 70, 73] }, // A/C#
+      { bass: 36, chord: [36, 43, 48], melody: [72, 76, 79, 84], riff: [60, 64, 67, 68, 72] }, // C
+      { bass: 35, chord: [35, 40, 47], melody: [71, 76, 79, 83], riff: [59, 64, 67, 69, 71] }, // Em/B
+      { bass: 41, chord: [41, 48, 53], melody: [72, 77, 81], riff: [60, 65, 69, 70, 72] }, // F
+      { bass: 35, chord: [35, 42, 47], melody: [75, 78, 81, 83], riff: [59, 63, 66, 69, 71] }, // B7
     ],
   },
 };
 /** The table tune's bass line: semitones above the chord's bass note on each half beat. */
 const BASS_LINE = [0, 0, 12, 0, 0, 12, 0, 12];
+/** The half beats where the rhythm guitar lets its chord ring; on the rest it chugs with the strings muted. */
+const ACCENTS = [0, 3, 6];
 
 export interface Volumes {
   master: number;
@@ -107,9 +121,13 @@ class SoundEngine {
   private amb: GainNode | null = null;
   private music: GainNode | null = null;
   /** Each tune has its own output, so one can fade out under the other. */
-  private tunes: Record<TuneName, { out: GainNode; lead: GainNode; choir: GainNode }> | null = null;
+  private tunes: Record<TuneName, { fade: GainNode; out: AudioNode; lead: GainNode; send: GainNode }> | null = null;
   private tune: TuneName = 'lobby';
+  /** The table band's guitar amps: one each, so their notes don't smear into one another. */
+  private amps: { rhythm: AudioNode; lead: AudioNode; solo: AudioNode } | null = null;
+  private strings = new Map<number, { buffer: AudioBuffer; rate: number }>();
   private wow: GainNode | null = null;
+  private vibrato: GainNode | null = null;
   private noise: AudioBuffer | null = null;
   private brown: AudioBuffer | null = null;
   private volumes: Volumes = { master: 0.8, sfx: 0.9, ambience: 0.5, music: 0.5, muted: false };
@@ -225,24 +243,28 @@ class SoundEngine {
 
   /**
    * The music playing somewhere in the room, as if off a worn tape: muffled, a little unsteady in
-   * pitch, with an echo on the melody. Slow and uneasy between games, urgent while one is on.
+   * pitch, with an echo on the melody. Slow and uneasy between games; a band while one is on.
    */
   private startMusic(): void {
     const ctx = this.ctx!;
-    const warm = this.filter('lowpass', 2600, 0.5);
-    warm.connect(this.music!);
-
-    const flutter = ctx.createOscillator();
-    flutter.frequency.value = 0.4;
-    this.wow = ctx.createGain();
-    this.wow.gain.value = 5; // cents
-    flutter.connect(this.wow);
-    flutter.start();
+    const lfo = (freq: number, cents: number) => {
+      const o = ctx.createOscillator();
+      o.frequency.value = freq;
+      const depth = ctx.createGain();
+      depth.gain.value = cents;
+      o.connect(depth);
+      o.start();
+      return depth;
+    };
+    this.wow = lfo(0.4, 5);
+    this.vibrato = lfo(5.5, 14);
 
     const outputs = (name: TuneName) => {
-      const out = ctx.createGain();
-      out.gain.value = name === this.tune ? 1 : 0;
-      out.connect(warm);
+      const fade = ctx.createGain();
+      fade.gain.value = name === this.tune ? 1 : 0;
+      fade.connect(this.music!);
+      const out = this.filter('lowpass', 2600, 0.5);
+      out.connect(fade);
       const echo = ctx.createDelay(2);
       echo.delayTime.value = TUNES[name].beat * 0.75;
       const send = ctx.createGain();
@@ -254,12 +276,26 @@ class SoundEngine {
       const lead = ctx.createGain();
       lead.connect(out);
       lead.connect(send);
-      // Two narrow bands turn a buzzing chord into something like voices singing "ah".
-      const choir = ctx.createGain();
-      for (const freq of [650, 1080]) choir.connect(this.filter('bandpass', freq, 4)).connect(out);
-      return { out, lead, choir };
+      return { fade, out, lead, send };
     };
     this.tunes = { lobby: outputs('lobby'), table: outputs('table') };
+
+    // A guitar amp: overdrive, then the narrow band of a speaker cabinet. It skips the tape's muffling.
+    const overdrive = overdriveCurve();
+    const amp = (drive: number, level: number, ...to: AudioNode[]) => {
+      const input = ctx.createGain();
+      input.gain.value = drive;
+      const fuzz = ctx.createWaveShaper();
+      fuzz.curve = overdrive;
+      fuzz.oversample = '2x';
+      const output = ctx.createGain();
+      output.gain.value = level;
+      input.connect(fuzz).connect(this.filter('highpass', 110)).connect(this.filter('lowpass', 4200, 0.7)).connect(this.filter('lowpass', 4200, 0.7)).connect(output);
+      for (const node of to) output.connect(node);
+      return input;
+    };
+    const { fade, send } = this.tunes.table;
+    this.amps = { rhythm: amp(5, 0.08, fade), lead: amp(8, 0.045, fade), solo: amp(8, 0.06, fade, send) };
 
     setInterval(() => this.scheduleMusic(), 250);
   }
@@ -272,7 +308,7 @@ class SoundEngine {
     this.nextBar = 0;
     if (!this.ctx || !this.tunes) return;
     for (const name of Object.keys(this.tunes) as TuneName[]) {
-      this.tunes[name].out.gain.setTargetAtTime(name === tune ? 1 : 0, this.ctx.currentTime, 0.4);
+      this.tunes[name].fade.gain.setTargetAtTime(name === tune ? 1 : 0, this.ctx.currentTime, 0.4);
     }
   }
 
@@ -295,57 +331,107 @@ class SoundEngine {
   private playBar(name: TuneName, index: number, t: number): void {
     const tune = TUNES[name];
     const bar = tune.bars[index % tune.bars.length]!;
-    const { out, lead, choir } = this.tunes![name];
+    const { out, lead } = this.tunes![name];
     const half = tune.beat / 2;
     if (name === 'lobby') {
       // Each chord breathes in and out, overlapping the next.
-      for (const pitch of bar.pad) {
+      for (const pitch of bar.chord) {
         this.note('triangle', pitch, t, 0.045, 1.5, 4.2, out, -6);
         this.note('sawtooth', pitch, t, 0.012, 1.5, 4.2, out, 6);
       }
       // The root on the first beat, and a quieter push towards the next bar.
       this.note('triangle', bar.bass, t, 0.22, 0.03, 2.2, out);
       this.note('triangle', bar.bass, t + tune.beat * 2.5, 0.12, 0.03, 1.2, out);
-    } else {
-      // The tune runs in rounds of sixteen bars: two bars of piano and ticking alone, then the
-      // bass and drums come in, and voices join for the second half.
-      const round = index % (tune.bars.length * 2);
-      for (const pitch of bar.pad) {
-        this.note('triangle', pitch, t, 0.035, 0.25, 2.2, out, -6);
-        this.note('sawtooth', pitch, t, 0.02, 0.25, 2.2, out, 6);
-        if (round >= tune.bars.length) this.note('sawtooth', pitch + 12, t, 0.05, 0.5, 2.4, choir);
+      for (const [pitch, at] of this.wander(tune, bar, t)) {
+        this.note('sine', pitch, at, 0.14, 0.008, 1.6, lead);
+        this.note('sine', pitch + 12, at, 0.045, 0.005, 0.5, lead);
       }
-      // The piano never lets up: sixteen quick notes a bar, every other one hammering the same key.
-      const [low, mid, high, neighbour, top] = bar.riff!;
-      const turn = [low, mid, high, mid, low, mid, neighbour, mid];
-      for (let i = 0; i < 16; i++) {
-        const at = t + (i * half) / 2;
-        const pitch = i % 2 ? top : turn[i / 2]!;
-        const peak = i % 2 ? 0.06 : i % 8 === 0 ? 0.14 : 0.1;
-        this.note('triangle', pitch, at, peak, 0.004, 0.45, out);
-        this.note('sine', pitch + 12, at, peak / 4, 0.003, 0.15, out);
-      }
-      BASS_LINE.forEach((step, slot) => {
-        const at = t + slot * half;
-        this.noiseBurst(at, 0.04).connect(this.filter('bandpass', 3200)).connect(this.envelope(at, slot % 2 ? 0.07 : 0.035, 0.002, 0.03, out));
-        if (round < 2) return;
-        this.note('triangle', bar.bass + step, at, slot === 0 ? 0.2 : 0.13, 0.01, 0.3, out);
-        if (slot % 4 === 0) this.tone('sine', 120, 45, at, 0.14).connect(this.envelope(at, 0.3, 0.004, 0.14, out));
-        if (slot % 4 === 2) this.noiseBurst(at, 0.14).connect(this.filter('bandpass', 1800, 0.8)).connect(this.envelope(at, 0.08, 0.003, 0.12, out));
-      });
+      return;
     }
-    // A few melody notes a bar, each a small step from the last, so it never repeats exactly.
-    const ring = name === 'lobby' ? 1.6 : 1.2;
+    // The band plays in rounds of sixteen bars: the lead guitar opens alone over the ticking, the
+    // rest crash in after two bars, and a second guitar sings over the top for the second half.
+    const amps = this.amps!;
+    const round = index % (tune.bars.length * 2);
+    // The lead never lets up: sixteen quick notes a bar, every other one picking the same string.
+    const [low, mid, high, neighbour, top] = bar.riff!;
+    const turn = [low, mid, high, mid, low, mid, neighbour, mid];
+    for (let i = 0; i < 16; i++) this.strum([i % 2 ? top : turn[i / 2]!], t + (i * half) / 2, 0.09, amps.lead);
+    BASS_LINE.forEach((step, slot) => {
+      const at = t + slot * half;
+      this.noiseBurst(at, 0.04).connect(this.filter('bandpass', 3200)).connect(this.envelope(at, slot % 2 ? 0.07 : 0.035, 0.002, 0.03, out));
+      if (round < 2) return;
+      this.note('triangle', bar.bass + step, at, slot === 0 ? 0.2 : 0.13, 0.01, 0.3, out);
+      if (ACCENTS.includes(slot)) this.strum(bar.chord, at, half - 0.04, amps.rhythm);
+      else this.strum(bar.chord.slice(0, 2), at, 0.06, amps.rhythm, 'muted');
+      if (slot % 4 === 0) this.tone('sine', 120, 45, at, 0.14).connect(this.envelope(at, 0.42, 0.004, 0.14, out));
+      if (slot % 4 === 2) this.noiseBurst(at, 0.14).connect(this.filter('bandpass', 1800, 0.8)).connect(this.envelope(at, 0.15, 0.003, 0.12, out));
+    });
+    if (round >= tune.bars.length) for (const [pitch, at] of this.wander(tune, bar, t)) this.strum([pitch], at, 1, amps.solo, 'sung');
+  }
+
+  /** A few melody notes for a bar, each a small step from the last, so the tune never repeats exactly. */
+  private wander(tune: Tune, bar: Bar, t: number): [pitch: number, at: number][] {
+    const notes: [number, number][] = [];
     for (let slot = 0; slot < tune.melody.length; slot++) {
       if (Math.random() > tune.melody[slot]!) continue;
       const near = bar.melody.filter((p) => p !== this.lastPitch && Math.abs(p - this.lastPitch) <= 5);
       const pool = near.length ? near : bar.melody;
       const pitch = pool[Math.floor(Math.random() * pool.length)]!;
       this.lastPitch = pitch;
-      const at = t + slot * half + rand(0, 0.02);
-      this.note('sine', pitch, at, 0.14, 0.008, ring, lead);
-      this.note('sine', pitch + 12, at, 0.045, 0.005, ring / 3, lead);
+      notes.push([pitch, t + (slot * tune.beat) / 2 + rand(0, 0.02)]);
     }
+    return notes;
+  }
+
+  /**
+   * Guitar strings picked together into an amp, ringing for `ring` seconds before a hand stops
+   * them. 'muted' is the dull chug of strings damped at the bridge; 'sung' adds a player's vibrato.
+   */
+  private strum(pitches: readonly number[], t: number, ring: number, amp: AudioNode, style: 'open' | 'muted' | 'sung' = 'open'): void {
+    const ctx = this.ctx!;
+    const hand = ctx.createGain();
+    hand.gain.setValueAtTime(1, t);
+    hand.gain.setTargetAtTime(0, t + ring, 0.03);
+    (style === 'muted' ? hand.connect(this.filter('lowpass', 1000)) : hand).connect(amp);
+    pitches.forEach((pitch, i) => {
+      const string = this.string(pitch);
+      const src = ctx.createBufferSource();
+      src.buffer = string.buffer;
+      src.playbackRate.value = string.rate;
+      this.wow!.connect(src.detune);
+      if (style === 'sung') this.vibrato!.connect(src.detune);
+      src.connect(hand);
+      // The pick crosses the strings one after another.
+      src.start(t + i * 0.008);
+      src.stop(t + ring + 0.3);
+    });
+  }
+
+  /**
+   * One plucked string, made once per pitch and kept. A burst of noise goes round a delay as long
+   * as the note's wavelength, losing a little brightness each pass, as a real string does
+   * (Karplus-Strong). The delay is a whole number of samples, so `rate` nudges it into tune.
+   */
+  private string(pitch: number): { buffer: AudioBuffer; rate: number } {
+    let string = this.strings.get(pitch);
+    if (string) return string;
+    const ctx = this.ctx!;
+    const period = Math.max(2, Math.round(ctx.sampleRate / hz(pitch) + 0.5));
+    const buffer = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 1.5), ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    // The pick: noise with the fizz taken off, centred so the string doesn't sit off to one side.
+    let last = 0;
+    let sum = 0;
+    for (let i = 0; i < period; i++) {
+      last += 0.4 * (Math.random() * 2 - 1 - last);
+      data[i] = last;
+      sum += last;
+    }
+    for (let i = 0; i < period; i++) data[i] = (data[i]! - sum / period) * 1.5;
+    for (let i = period; i < data.length; i++) data[i] = 0.5 * (data[i - period]! + data[i - period + 1]!);
+    string = { buffer, rate: (hz(pitch) * (period - 0.5)) / ctx.sampleRate };
+    this.strings.set(pitch, string);
+    return string;
   }
 
   /** One note of the tune: `swell` seconds to reach `peak`, then `fade` seconds to die away. */
