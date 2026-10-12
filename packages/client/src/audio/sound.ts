@@ -476,7 +476,7 @@ class SoundEngine {
     hand.gain.setValueAtTime(1, t);
     hand.gain.setTargetAtTime(0, t + ring * 0.6, 0.05);
     hand.connect(to);
-    const src = this.play(sample, t, level * 2, hand);
+    const src = this.play(sample, t, level, hand);
     this.wow!.connect(src.detune);
     src.stop(t + ring + 0.3);
   }
