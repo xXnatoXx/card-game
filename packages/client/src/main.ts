@@ -1,7 +1,9 @@
 import '@fontsource/vt323';
+import '@fontsource/chakra-petch/thai-500.css';
 import './style.css';
 import { sound } from './audio/sound.js';
 import { direct } from './director.js';
+import { t } from './i18n.js';
 import { store, subscribe } from './net.js';
 import { onSettings } from './settings.js';
 import { Stage } from './scene/stage.js';
@@ -33,6 +35,7 @@ stage.onFrame((_dt, time) => {
 // Apply the player's settings now and whenever they change.
 onSettings((s) => {
   sound.setVolumes(s);
+  document.documentElement.lang = s.language;
   document.getElementById('frame')!.classList.toggle('no-crt', !s.crt);
   stage.effects.intensity = s.reducedEffects ? 0.3 : 1;
   scene.mouseLook = s.mouseLook;
@@ -54,7 +57,8 @@ const labels = new Labels(document.getElementById('labels')!, scene, stage);
 direct(scene, feed, (seat, text, tone) => labels.say(seat, text, tone));
 
 const toasts = h('div', { class: 'toasts' });
-const offline = h('div', { class: 'offline panel' }, 'Connecting to the table…');
+const offline = h('div', { class: 'offline panel' });
+onSettings(() => (offline.textContent = t().connecting));
 ui.append(toasts, offline, settingsPanel.el);
 
 function toast(text: string): void {
@@ -89,6 +93,7 @@ function route(): void {
   const playing = !!game && game.view.winner === null;
   if (playing && !wasPlaying) sound.shuffle();
   wasPlaying = playing;
+  sound.setTune(playing ? 'table' : 'lobby');
 
   const inGame = !!room && !!game && (room.status === 'playing' || resultsOpen);
   const next: Kind = !room ? 'lobby' : inGame ? 'game' : 'room';
@@ -106,7 +111,7 @@ function route(): void {
       game.seats.map((s, i) =>
         i === v.seat
           ? null
-          : { name: s.name, sub: `${v.handCounts[i]} cards`, turn: v.winner === null && i === v.turn, away: !s.connected },
+          : { name: s.name, sub: t().cards(v.handCounts[i]!), turn: v.winner === null && i === v.turn, away: !s.connected },
       ),
     );
   } else {
@@ -117,7 +122,7 @@ function route(): void {
     scene.syncPool(0, null);
     labels.render(
       room.members.map((m, i) =>
-        i === me ? null : { name: m.name, sub: m.bot ? 'bot' : m.id === room.hostId ? 'host' : '', turn: false, away: !m.connected },
+        i === me ? null : { name: m.name, sub: m.bot ? t().bot : m.id === room.hostId ? t().host : '', turn: false, away: !m.connected },
       ),
     );
   }

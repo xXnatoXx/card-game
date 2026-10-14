@@ -1,0 +1,13 @@
+Recorded instrument samples used by the game's music
+====================================================
+
+Guitars and bass (distortion_guitar, electric_guitar_muted, electric_bass_pick):
+single notes rendered from the FluidR3_GM soundfont by Frank Wen,
+from https://github.com/gleitz/midi-js-soundfonts (Creative Commons Attribution 3.0).
+Files are named by MIDI note number.
+
+Drums (drums/snare.wav, drums/hat.wav, drums/crash.wav): from the Versilian Community
+Sample Library by Versilian Studios, https://github.com/sgossner/VCSL (CC0, public domain).
+  snare.wav  Snare Drum, Modern 1 / Snare2_HitSN_v7_rr1_Mid.wav
+  hat.wav    Hi-Hat Cymbal / HiHat_HitC_v3_rr1_Mid.wav
+  crash.wav  Suspended Cymbal 1 / susCymb1_hit_stick_f1.wav

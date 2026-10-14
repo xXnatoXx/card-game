@@ -74,6 +74,7 @@ Notes
   - Use a different port with --port=4000 (or the PORT environment variable).
   - Rooms and games live in memory: closing the server ends every game.
   - The animal models in public/models/animals are Kenney "Cube Pets" (CC0).
+  - The music's guitar, bass and drum recordings are credited in public/samples/CREDITS.txt.
 `,
 );
 

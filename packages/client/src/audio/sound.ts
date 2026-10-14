@@ -1,5 +1,6 @@
-// Every sound in the game is synthesized here with Web Audio: no sound files. Effects go through
-// a crude bit-crusher so they sound like an old machine, to match the dithered picture.
+// The game's sound effects are synthesized here with Web Audio. Effects go through a crude
+// bit-crusher so they sound like an old machine, to match the dithered picture. The music's band
+// plays recorded notes from public/samples, and synthesized ones until those have loaded.
 
 type Kind = 'white' | 'brown';
 
@@ -31,12 +32,189 @@ function crushCurve(steps: number): Float32Array<ArrayBuffer> {
   return curve;
 }
 
+/** Squashes loud input flat, the way an overdriven guitar amp does. */
+function overdriveCurve(): Float32Array<ArrayBuffer> {
+  const n = 2048;
+  const curve = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * 2 - 1;
+    curve[i] = Math.tanh(3 * x);
+  }
+  return curve;
+}
+
 const rand = (min: number, max: number) => min + Math.random() * (max - min);
+
+/** MIDI note number to frequency. */
+const hz = (note: number) => 440 * 2 ** ((note - 69) / 12);
+
+interface Bar {
+  /** The bass guitar's notes for this bar: the root, then any others its line picks from. */
+  bass: readonly number[];
+  /** The rhythm guitar's chord. It chugs on the two lowest strings. */
+  chord: readonly number[];
+  /** The four notes the singing guitar's phrase picks between, lowest first. */
+  melody: readonly number[];
+  /** The four notes the lead guitar picks between, lowest first. */
+  lead: readonly number[];
+}
+
+/** One bar of drums, a character per sixteenth: X a full hit, x a softer one. A C among the hi-hats is a crash cymbal. */
+interface Beat {
+  kick: string;
+  snare: string;
+  hat: string;
+}
+
+export type TuneName = 'lobby' | 'table';
+
+interface Tune {
+  /** Seconds per beat; four beats to a bar. */
+  beat: number;
+  /** The lead guitar's line: which of the bar's lead notes it picks on each half beat, or - to let the last one ring on. */
+  picking: string;
+  /** The half beats where the rhythm guitar lets its chord ring; on the rest it chugs with the strings muted. */
+  accents: readonly number[];
+  /**
+   * The bass guitar's line for each bar, going round. On each half beat it plays one of the bar's
+   * bass notes, or lets the last one ring on (-).
+   */
+  bassLines: readonly string[];
+  /**
+   * The singing guitar's phrase over each chord, a character per sixteenth: one of the bar's melody
+   * notes, - to hold it, or . for silence.
+   */
+  phrases: readonly string[];
+  /** The drums for each bar of a round. In a bar without any, the bass drops out too. */
+  drums: readonly (Beat | null)[];
+  /** The chords, as MIDI notes. */
+  bars: readonly Bar[];
+}
+
+/** Reads a line of music, a character per step: which note is struck, on which step, and for how many steps it rings. */
+function notesOf(line: string): [note: number, step: number, held: number][] {
+  const notes: [number, number, number][] = [];
+  for (let step = 0; step < line.length; step++) {
+    if (line[step] === '-' || line[step] === '.') continue;
+    let held = 1;
+    while (line[step + held] === '-') held++;
+    notes.push([+line[step]!, step, held]);
+  }
+  return notes;
+}
+
+const HITS: Record<string, number> = { X: 1, x: 0.65 };
+/** The same bar of drums with a crash cymbal on its first beat, for where the band comes in. */
+const crashing = (beat: Beat): Beat => ({ ...beat, hat: 'C' + beat.hat.slice(1) });
+
+// The lobby's drums: a plain backbeat under ticking hi-hats, in some bars with a second kick after the third beat.
+const BACKBEAT: Beat = { kick: 'X.......X.......', snare: '....X.......X...', hat: 'x.X.x.X.x.X.x.X.' };
+const DOUBLED: Beat = { ...BACKBEAT, kick: 'X.......X.x.....' };
+
+// The table's drums play half time: the snare waits for the third beat, the kick sometimes pushes
+// ahead of it, and fills close the phrases.
+const HALF: Beat = { kick: 'X...............', snare: '........X.......', hat: 'X...X...X...X...' };
+const HALF_PUSHED: Beat = { ...HALF, kick: 'X.....x.........', hat: 'X...X...X...X.x.' };
+const HALF_BUSY: Beat = { ...HALF_PUSHED, kick: 'X..x..x.........' };
+const FILL: Beat = { ...HALF_PUSHED, snare: '........X.....xx' };
+const BIG_FILL: Beat = { ...HALF_BUSY, snare: '........X...xxxx' };
+
+// Both tunes are played by the same band: a heavy groove of drums, bass and overdriven guitars.
+const TUNES: Record<TuneName, Tune> = {
+  // Between games: eight slow bars in D minor that never quite settle. The lead climbs each chord
+  // and comes back down, lingering on the bottom and top notes. The bass drives on each chord's root, and in the first two bars of every
+  // four flicks to a neighbouring note on the last half beat. Half way through a round the drums
+  // and bass drop out for a bar. The singing guitar's riff keeps coming back to the same low note,
+  // and every second bar answers it. The rhythm guitar plays square, with the kick.
+  lobby: {
+    beat: 0.8,
+    picking: '0-123-21',
+    accents: [0, 4],
+    bassLines: ['00000001', '00000001', '00000000', '00000000'],
+    phrases: [
+      '0-0-3-0-1-0-3---', '........3-2-1-0-', '0-0-3-0-1-0-3---', '........3-2-1-0-',
+      '0-0-3-0-1-0-3---', '........0-1-2-3-', '0-0-3-0-1-0-3---', '3---2---1---0---',
+    ],
+    drums: [
+      BACKBEAT, DOUBLED, crashing(BACKBEAT), DOUBLED, BACKBEAT, BACKBEAT, DOUBLED, null,
+      crashing(BACKBEAT), DOUBLED, BACKBEAT, DOUBLED, BACKBEAT, BACKBEAT, DOUBLED, BACKBEAT,
+    ],
+    bars: [
+      { bass: [38, 41], chord: [38, 45, 50], melody: [74, 77, 79, 81], lead: [53, 57, 60, 64] }, // Dm9
+      { bass: [46, 45], chord: [41, 46, 53], melody: [74, 77, 81, 82], lead: [53, 57, 58, 62] }, // Bbmaj7
+      { bass: [43], chord: [38, 43, 50], melody: [74, 77, 79, 82], lead: [53, 55, 58, 62] }, // Gm7
+      { bass: [45], chord: [40, 45, 52], melody: [73, 76, 79, 81], lead: [52, 55, 58, 61] }, // A7b9
+      { bass: [38, 41], chord: [38, 45, 50], melody: [74, 77, 79, 81], lead: [53, 57, 60, 64] }, // Dm9
+      { bass: [46, 45], chord: [41, 46, 53], melody: [74, 77, 81, 82], lead: [53, 57, 58, 62] }, // Bbmaj7
+      { bass: [40], chord: [40, 46, 52], melody: [74, 76, 79, 82], lead: [52, 55, 58, 62] }, // Em7b5
+      { bass: [45], chord: [40, 45, 52], melody: [73, 76, 79, 81], lead: [52, 55, 57, 61] }, // A7
+    ],
+  },
+  // While a game is on, a battle of nerves in E minor, unhurried, over a bass that sinks a semitone
+  // every bar, then two bars that wind the tension back up. Every other note of the lead is on the
+  // same string, and every second bar it reaches a step higher. The bass holds long roots, and
+  // every second bar ends on a turn: up to a note of the chord twice, then home. For the second
+  // half of a round it drives in half beats, popping up an octave, and keeps the turn. The drums
+  // stay in half time, with a busier kick and fills for the second half, when the singing guitar
+  // joins with a riff on the bottom of each chord and an answer every second bar. The rhythm
+  // guitar's accents fall three, three and two half beats apart.
+  table: {
+    beat: 0.66,
+    picking: '03132313',
+    accents: [0, 3, 6],
+    bassLines: [
+      '0---0220', '001-----', '0---0220', '001-----', '0-1-0220', '0-0-1---', '0---0220', '001-----',
+      '00100220', '00100101', '00100220', '00100101', '00100220', '00100101', '00100220', '00100101',
+    ],
+    phrases: [
+      '0-0-1-0-2-1-0---', '........0-1-3---', '0-0-1-0-2-1-0---', '........1-2-3---',
+      '0-0-1-0-2-1-0---', '........3-2-1-0-', '0-0-1-0-3-2-3---', '3---2---1-2-3---',
+    ],
+    drums: [
+      HALF, HALF_PUSHED, crashing(HALF), HALF_PUSHED, HALF, HALF_BUSY, HALF, HALF_PUSHED,
+      crashing(HALF_PUSHED), HALF_BUSY, HALF_PUSHED, FILL, HALF_PUSHED, HALF_BUSY, HALF_PUSHED, BIG_FILL,
+    ],
+    bars: [
+      { bass: [40, 52, 43], chord: [40, 47, 52], melody: [76, 79, 81, 83], lead: [64, 67, 71, 76] }, // Em
+      { bass: [39, 51], chord: [39, 47, 51], melody: [75, 78, 81, 83], lead: [63, 66, 72, 75] }, // B/D#
+      { bass: [38, 50, 43], chord: [38, 43, 50], melody: [74, 79, 81, 83], lead: [62, 67, 71, 74] }, // G/D
+      { bass: [37, 49], chord: [37, 45, 49], melody: [73, 76, 79, 81], lead: [61, 64, 70, 73] }, // A/C#
+      { bass: [36, 48, 40], chord: [36, 43, 48], melody: [72, 76, 79, 81], lead: [60, 64, 67, 72] }, // C
+      { bass: [35, 47], chord: [35, 40, 47], melody: [76, 79, 81, 83], lead: [59, 64, 69, 71] }, // Em/B
+      { bass: [41, 53, 45], chord: [41, 48, 53], melody: [72, 77, 79, 81], lead: [60, 65, 69, 72] }, // F
+      { bass: [35, 47], chord: [35, 42, 47], melody: [75, 78, 81, 83], lead: [59, 63, 69, 71] }, // B7
+    ],
+  },
+};
+
+/** The recorded instruments under public/samples, and the lowest and highest MIDI note kept of each. */
+const RECORDED: Record<string, readonly [number, number]> = {
+  distortion_guitar: [35, 84],
+  electric_guitar_muted: [35, 48],
+  electric_bass_pick: [35, 53],
+};
+const RECORDED_DRUMS = ['snare', 'hat', 'crash'];
+
+/** A recorded note or drum hit, ready to play. */
+interface Sample {
+  buffer: AudioBuffer;
+  /** Seconds of hush to skip before the sound starts. */
+  lead: number;
+  /** What to multiply it by so every recording peaks at the same level. */
+  gain: number;
+}
+
+/** One guitarist: where their recorded notes go, and the amp used for strings synthesized in their place. */
+interface Guitar {
+  direct: AudioNode;
+  amp: AudioNode;
+}
 
 export interface Volumes {
   master: number;
   sfx: number;
   ambience: number;
+  music: number;
   muted: boolean;
 }
 
@@ -45,10 +223,20 @@ class SoundEngine {
   private master: GainNode | null = null;
   private sfx: GainNode | null = null;
   private amb: GainNode | null = null;
+  private music: GainNode | null = null;
+  /** Each tune has its own output, so one can fade out under the other. */
+  private tunes: Record<TuneName, { fade: GainNode; out: AudioNode; guitars: { rhythm: Guitar; lead: Guitar; solo: Guitar } }> | null = null;
+  private tune: TuneName = 'lobby';
+  private samples = new Map<string, Sample>();
+  private strings = new Map<number, { buffer: AudioBuffer; rate: number; loopStart: number }>();
+  private wow: GainNode | null = null;
+  private vibrato: GainNode | null = null;
   private noise: AudioBuffer | null = null;
   private brown: AudioBuffer | null = null;
-  private volumes: Volumes = { master: 0.8, sfx: 0.9, ambience: 0.5, muted: false };
+  private volumes: Volumes = { master: 0.8, sfx: 0.9, ambience: 0.5, music: 0.5, muted: false };
   private lastBeatPhase = 1;
+  private bar = 0;
+  private nextBar = 0;
 
   constructor() {
     // Browsers only allow audio after the player does something.
@@ -89,20 +277,25 @@ class SoundEngine {
     this.amb = ctx.createGain();
     this.amb.connect(this.master);
 
+    this.music = ctx.createGain();
+    this.music.connect(this.master);
+
     this.noise = makeNoise(ctx, 1, 'white');
     this.brown = makeNoise(ctx, 4, 'brown');
     this.applyVolumes();
     this.startAmbience();
+    this.startMusic();
   }
 
   private applyVolumes(): void {
     const ctx = this.ctx;
-    if (!ctx || !this.master || !this.sfx || !this.amb) return;
+    if (!ctx || !this.master || !this.sfx || !this.amb || !this.music) return;
     const t = ctx.currentTime;
     const v = this.volumes;
     this.master.gain.setTargetAtTime(v.muted ? 0 : v.master, t, 0.05);
     this.sfx.gain.setTargetAtTime(v.sfx, t, 0.05);
     this.amb.gain.setTargetAtTime(v.ambience, t, 0.05);
+    this.music.gain.setTargetAtTime(v.music, t, 0.05);
   }
 
   /** The room: mains hum, the lamp's electric buzz with a little flutter, and dark room tone. */
@@ -148,18 +341,320 @@ class SoundEngine {
     room.start();
   }
 
+  // --- Music --------------------------------------------------------------------
+
+  /**
+   * The music: a band of drums, bass and overdriven guitars, a little unsteady in pitch like a
+   * worn tape, with an echo on the guitar that sings. Slow and uneasy between games, urgent while
+   * one is on.
+   */
+  private startMusic(): void {
+    const ctx = this.ctx!;
+    const lfo = (freq: number, cents: number) => {
+      const o = ctx.createOscillator();
+      o.frequency.value = freq;
+      const depth = ctx.createGain();
+      depth.gain.value = cents;
+      o.connect(depth);
+      o.start();
+      return depth;
+    };
+    this.wow = lfo(0.4, 5);
+    this.vibrato = lfo(5.5, 14);
+
+    // A guitar amp: overdrive, then the narrow band of a speaker cabinet.
+    const overdrive = overdriveCurve();
+    const amp = (drive: number, level: number, ...to: AudioNode[]) => {
+      const input = ctx.createGain();
+      input.gain.value = drive;
+      const fuzz = ctx.createWaveShaper();
+      fuzz.curve = overdrive;
+      fuzz.oversample = '2x';
+      const output = ctx.createGain();
+      output.gain.value = level;
+      input.connect(fuzz).connect(this.filter('highpass', 110)).connect(this.filter('lowpass', 4200, 0.7)).connect(this.filter('lowpass', 4200, 0.7)).connect(output);
+      for (const node of to) output.connect(node);
+      return input;
+    };
+
+    const outputs = (name: TuneName) => {
+      const fade = ctx.createGain();
+      fade.gain.value = name === this.tune ? 1 : 0;
+      fade.connect(this.music!);
+      // The drums and bass are muffled, as if heard through a wall.
+      const out = this.filter('lowpass', 2600, 0.5);
+      out.connect(fade);
+      const echo = ctx.createDelay(2);
+      echo.delayTime.value = TUNES[name].beat * 0.75;
+      const send = ctx.createGain();
+      send.gain.value = 0.4;
+      const feedback = ctx.createGain();
+      feedback.gain.value = 0.35;
+      send.connect(echo).connect(feedback).connect(echo);
+      echo.connect(out);
+      // One amp per guitar, so their notes don't smear into one another. Recorded guitars already
+      // carry their amp's sound and go straight out at `level`.
+      const guitar = (level: number, drive: number, ampLevel: number, ...to: AudioNode[]): Guitar => {
+        const direct = ctx.createGain();
+        direct.gain.value = level;
+        for (const node of to) direct.connect(node);
+        return { direct, amp: amp(drive, ampLevel, ...to) };
+      };
+      const guitars = {
+        rhythm: guitar(0.09, 5, 0.08, fade),
+        lead: guitar(0.06, 8, 0.045, fade),
+        solo: guitar(0.08, 8, 0.06, fade, send),
+      };
+      return { fade, out, guitars };
+    };
+    this.tunes = { lobby: outputs('lobby'), table: outputs('table') };
+
+    this.loadSamples();
+    setInterval(() => this.scheduleMusic(), 250);
+  }
+
+  /** Fetches the recordings in the background. Until one arrives, its part is synthesized instead. */
+  private loadSamples(): void {
+    const ctx = this.ctx!;
+    const load = async (key: string, file: string) => {
+      try {
+        const response = await fetch(`${import.meta.env.BASE_URL}samples/${file}`);
+        if (!response.ok) return;
+        const buffer = await ctx.decodeAudioData(await response.arrayBuffer());
+        const data = buffer.getChannelData(0);
+        let peak = 0;
+        for (let i = 0; i < data.length; i++) peak = Math.max(peak, Math.abs(data[i]!));
+        if (!peak) return;
+        let first = 0;
+        while (Math.abs(data[first]!) < peak * 0.05) first++;
+        this.samples.set(key, { buffer, lead: Math.max(0, first / buffer.sampleRate - 0.002), gain: 1 / peak });
+      } catch {
+        /* missing or unreadable: the synthesized version keeps playing */
+      }
+    };
+    for (const [sound, [low, high]] of Object.entries(RECORDED)) {
+      for (let pitch = low; pitch <= high; pitch++) void load(`${sound}/${pitch}`, `${sound}/${pitch}.mp3`);
+    }
+    for (const drum of RECORDED_DRUMS) void load(`drums/${drum}`, `drums/${drum}.wav`);
+  }
+
+  /** Starts a recording at `t` and returns its source, so the caller can bend its pitch or stop it. */
+  private play(sample: Sample, t: number, level: number, to: AudioNode): AudioBufferSourceNode {
+    const ctx = this.ctx!;
+    const src = ctx.createBufferSource();
+    src.buffer = sample.buffer;
+    const g = ctx.createGain();
+    g.gain.value = sample.gain * level;
+    src.connect(g).connect(to);
+    src.start(t, sample.lead);
+    return src;
+  }
+
+  /** Switches the music, fading the old tune out under the new one. */
+  setTune(tune: TuneName): void {
+    if (tune === this.tune) return;
+    this.tune = tune;
+    this.bar = 0;
+    this.nextBar = 0;
+    if (!this.ctx || !this.tunes) return;
+    for (const name of Object.keys(this.tunes) as TuneName[]) {
+      this.tunes[name].fade.gain.setTargetAtTime(name === tune ? 1 : 0, this.ctx.currentTime, 0.4);
+    }
+  }
+
+  /** Queues the next bar a little before it is due. */
+  private scheduleMusic(): void {
+    const ctx = this.ctx!;
+    const now = ctx.currentTime;
+    if (this.volumes.muted || this.volumes.music <= 0) {
+      this.nextBar = 0;
+      return;
+    }
+    if (this.nextBar < now) this.nextBar = now + 0.1;
+    while (this.nextBar < now + 2) {
+      this.playBar(this.tune, this.bar, this.nextBar);
+      this.bar++;
+      this.nextBar += TUNES[this.tune].beat * 4;
+    }
+  }
+
+  private playBar(name: TuneName, index: number, t: number): void {
+    const tune = TUNES[name];
+    const bar = tune.bars[index % tune.bars.length]!;
+    const { fade, out, guitars } = this.tunes![name];
+    const half = tune.beat / 2;
+    const atTable = name === 'table';
+    // Both tunes run in rounds of sixteen bars: the lead guitar opens alone over the ticking, and
+    // the rest of the band comes in after two bars.
+    const round = index % (tune.bars.length * 2);
+    const band = round >= 2;
+    const beat = tune.drums[round];
+    // The lead holds each note until just before its next one.
+    for (const [note, slot, held] of notesOf(tune.picking)) this.strum([bar.lead[note]!], t + slot * half, held * half - 0.07, guitars.lead);
+    if (beat) this.drumBar(beat, t, tune.beat / 4, band, fade, out);
+    if (band && !beat) {
+      // A break: the rhythm guitar lets one chord ring where the drums and bass were.
+      this.strum(bar.chord, t, tune.beat * 4 - 0.3, guitars.rhythm);
+    } else if (band) {
+      // The bass holds each note until its next one.
+      for (const [note, slot, held] of notesOf(tune.bassLines[round % tune.bassLines.length]!)) {
+        this.bassNote(bar.bass[note]!, t + slot * half, slot === 0 ? 0.2 : 0.13, held * half - 0.03, fade, out);
+      }
+      for (let slot = 0; slot < 8; slot++) {
+        if (tune.accents.includes(slot)) this.strum(bar.chord, t + slot * half, half - 0.04, guitars.rhythm);
+        else this.strum(bar.chord.slice(0, 2), t + slot * half, 0.06, guitars.rhythm, 'muted');
+      }
+    }
+    // A second guitar sings over the top: once the band is in for the lobby, and for the second
+    // half of each round at the table.
+    if (atTable ? round >= tune.bars.length : band) {
+      const sixteenth = tune.beat / 4;
+      for (const [note, step, held] of notesOf(tune.phrases[index % tune.phrases.length]!)) {
+        this.strum([bar.melody[note]!], t + step * sixteenth, held * sixteenth - 0.04, guitars.solo, 'sung');
+      }
+    }
+  }
+
+  /** One bar of drums, a sixteenth at a time. Until the band is in, only the hi-hat ticks. */
+  private drumBar(beat: Beat, t: number, sixteenth: number, band: boolean, fade: AudioNode, out: AudioNode): void {
+    const snare = this.samples.get('drums/snare');
+    const hat = this.samples.get('drums/hat');
+    const crash = this.samples.get('drums/crash');
+    for (let step = 0; step < 16; step++) {
+      const at = t + step * sixteenth;
+      const tick = HITS[beat.hat[step]!];
+      // A cymbal crash marks the band coming in.
+      if (beat.hat[step] === 'C' && band && crash) this.play(crash, at, 0.2, fade);
+      else if (tick && hat) this.play(hat, at, 0.1 * tick, fade);
+      else if (tick) this.noiseBurst(at, 0.04).connect(this.filter('bandpass', 3200)).connect(this.envelope(at, 0.07 * tick, 0.002, 0.03, out));
+      if (!band) continue;
+      const kick = HITS[beat.kick[step]!];
+      if (kick) this.tone('sine', 120, 45, at, 0.14).connect(this.envelope(at, 0.42 * kick, 0.004, 0.14, out));
+      const hit = HITS[beat.snare[step]!];
+      if (hit && snare) this.play(snare, at, 0.3 * hit, fade);
+      else if (hit) this.noiseBurst(at, 0.14).connect(this.filter('bandpass', 1800, 0.8)).connect(this.envelope(at, 0.15 * hit, 0.003, 0.12, out));
+    }
+  }
+
+  /** A bass guitar note lasting about `ring` seconds: the recording into `to`, or a plain tone into `muffled`. */
+  private bassNote(pitch: number, t: number, level: number, ring: number, to: AudioNode, muffled: AudioNode): void {
+    const sample = this.samples.get(`electric_bass_pick/${pitch}`);
+    if (!sample) return this.note('triangle', pitch, t, level, 0.01, ring, muffled);
+    const hand = this.ctx!.createGain();
+    hand.gain.setValueAtTime(1, t);
+    hand.gain.setTargetAtTime(0, t + ring - 0.12, 0.05);
+    hand.connect(to);
+    const src = this.play(sample, t, level, hand);
+    this.wow!.connect(src.detune);
+    src.stop(t + ring + 0.3);
+  }
+
+  /**
+   * Guitar strings picked together, ringing for `ring` seconds before a hand stops them. 'muted'
+   * is the dull chug of strings damped at the bridge; 'sung' adds a player's vibrato. Each string
+   * is a recording if it has arrived, and a synthesized string through the guitar's amp if not.
+   */
+  private strum(pitches: readonly number[], t: number, ring: number, guitar: Guitar, style: 'open' | 'muted' | 'sung' = 'open'): void {
+    const ctx = this.ctx!;
+    const muted = style === 'muted';
+    const hand = (to: AudioNode) => {
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(1, t);
+      g.gain.setTargetAtTime(0, t + ring, 0.03);
+      g.connect(to);
+      return g;
+    };
+    let recorded: GainNode | undefined;
+    let synthesized: GainNode | undefined;
+    pitches.forEach((pitch, i) => {
+      // The pick crosses the strings one after another.
+      const at = t + i * 0.008;
+      const sample = this.samples.get(`${muted ? 'electric_guitar_muted' : 'distortion_guitar'}/${pitch}`);
+      let src: AudioBufferSourceNode;
+      if (sample) {
+        // Muted strings were recorded clean, so they still need the amp's overdrive.
+        recorded ??= hand(muted ? guitar.amp : guitar.direct);
+        src = this.play(sample, at, 1 / Math.sqrt(pitches.length), recorded);
+      } else {
+        if (!synthesized) {
+          const dull = this.filter('lowpass', 1000);
+          dull.connect(guitar.amp);
+          synthesized = hand(muted ? dull : guitar.amp);
+        }
+        const string = this.string(pitch);
+        src = ctx.createBufferSource();
+        src.buffer = string.buffer;
+        src.playbackRate.value = string.rate;
+        // Past the end of the buffer the string keeps sounding, held by the amp.
+        src.loop = true;
+        src.loopStart = string.loopStart;
+        src.loopEnd = string.buffer.duration;
+        src.connect(synthesized);
+        src.start(at);
+      }
+      this.wow!.connect(src.detune);
+      if (style === 'sung') this.vibrato!.connect(src.detune);
+      src.stop(t + ring + 0.3);
+    });
+  }
+
+  /**
+   * One plucked string, made once per pitch and kept. A burst of noise goes round a delay as long
+   * as the note's wavelength, losing a little brightness each pass, as a real string does
+   * (Karplus-Strong). The delay is a whole number of samples, so `rate` nudges it into tune.
+   */
+  private string(pitch: number): { buffer: AudioBuffer; rate: number; loopStart: number } {
+    let string = this.strings.get(pitch);
+    if (string) return string;
+    const ctx = this.ctx!;
+    const period = Math.max(2, Math.round(ctx.sampleRate / hz(pitch) + 0.5));
+    const buffer = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 1.5), ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    // The pick: noise with the fizz taken off, centred so the string doesn't sit off to one side.
+    let last = 0;
+    let sum = 0;
+    for (let i = 0; i < period; i++) {
+      last += 0.4 * (Math.random() * 2 - 1 - last);
+      data[i] = last;
+      sum += last;
+    }
+    for (let i = 0; i < period; i++) data[i] = (data[i]! - sum / period) * 1.5;
+    for (let i = period; i < data.length; i++) data[i] = 0.5 * (data[i - period]! + data[i - period + 1]!);
+    // Two turns of the string take a whole number of samples, so the last two loop without a click.
+    const loopStart = (data.length - (2 * period - 1)) / ctx.sampleRate;
+    string = { buffer, rate: (hz(pitch) * (period - 0.5)) / ctx.sampleRate, loopStart };
+    this.strings.set(pitch, string);
+    return string;
+  }
+
+  /** One note of the tune: `swell` seconds to reach `peak`, then `fade` seconds to die away. */
+  private note(type: OscillatorType, pitch: number, t: number, peak: number, swell: number, fade: number, to: AudioNode): void {
+    const ctx = this.ctx!;
+    const o = ctx.createOscillator();
+    o.type = type;
+    o.frequency.value = hz(pitch);
+    this.wow!.connect(o.detune);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(peak, t + swell);
+    g.gain.setTargetAtTime(0, t + swell, fade / 5);
+    o.connect(g).connect(to);
+    o.start(t);
+    o.stop(t + swell + fade);
+  }
+
   // --- Building blocks ----------------------------------------------------------
 
   private get ready(): AudioContext | null {
     return this.ctx && this.sfx && this.noise ? this.ctx : null;
   }
 
-  private envelope(t: number, peak: number, attack: number, decay: number): GainNode {
+  private envelope(t: number, peak: number, attack: number, decay: number, to: AudioNode = this.sfx!): GainNode {
     const g = this.ctx!.createGain();
     g.gain.setValueAtTime(0.0001, t);
     g.gain.exponentialRampToValueAtTime(Math.max(0.0002, peak), t + attack);
     g.gain.exponentialRampToValueAtTime(0.0001, t + attack + decay);
-    g.connect(this.sfx!);
+    g.connect(to);
     return g;
   }
 
@@ -312,35 +807,24 @@ class SoundEngine {
     }
   }
 
-  /** A bluff caught: an old siren winds up and down. */
-  alarm(ms: number): void {
+  /** A bluff caught: the game show "wrong answer" buzzer, one long harsh blast. */
+  alarm(): void {
     const ctx = this.ready;
     if (!ctx) return;
     const t = ctx.currentTime;
-    const duration = ms / 1000;
+    const duration = 0.75;
     const end = t + duration;
     const out = ctx.createGain();
     out.gain.setValueAtTime(0.0001, t);
-    out.gain.linearRampToValueAtTime(0.2, t + 0.06);
-    out.gain.setValueAtTime(0.2, Math.max(t + 0.07, end - 0.35));
+    out.gain.linearRampToValueAtTime(0.24, t + 0.015);
+    out.gain.setValueAtTime(0.24, end - 0.04);
     out.gain.linearRampToValueAtTime(0.0001, end);
     out.connect(this.sfx!);
-    const lowpass = this.filter('lowpass', 2400);
+    const lowpass = this.filter('lowpass', 1800);
     lowpass.connect(out);
-
-    const sweep = ctx.createOscillator();
-    sweep.type = 'triangle';
-    sweep.frequency.value = 1.4;
-    const depth = ctx.createGain();
-    depth.gain.value = 260;
-    sweep.connect(depth);
-    for (const [type, freq] of [['sawtooth', 820], ['square', 826]] as const) {
-      const o = this.tone(type, freq, freq, t, duration);
-      depth.connect(o.frequency);
-      o.connect(lowpass);
+    for (const [type, freq] of [['sawtooth', 98], ['sawtooth', 104], ['square', 147]] as const) {
+      this.tone(type, freq, freq, t, duration).connect(lowpass);
     }
-    sweep.start(t);
-    sweep.stop(end + 0.05);
   }
 
   /** A false alarm: a flat "wrong" buzzer, twice. */
