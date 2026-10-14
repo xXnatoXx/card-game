@@ -1038,6 +1038,8 @@ input:focus {
   padding: 22px 16px 2px;
   scrollbar-width: thin;
   scrollbar-color: var(--felt-light) transparent;
+  /* A finger scrolls the hand up and down; sideways it sweeps across cards to select them. */
+  touch-action: pan-y;
 }
 
 .hand-row {

@@ -41,12 +41,12 @@ onSettings((s) => {
   scene.mouseLook = s.mouseLook;
 });
 
-// Clicks: a soft tap for cards, a click for buttons.
+// Clicks: a soft tap for cards, a click for buttons. (Cards in the hand tap as they are picked.)
 document.addEventListener(
   'click',
   (e) => {
     const target = e.target as Element | null;
-    if (target?.closest('.hand .card, .staged .card')) sound.cardTap();
+    if (target?.closest('.staged .card')) sound.cardTap();
     else if (target?.closest('button')) sound.click();
   },
   true,

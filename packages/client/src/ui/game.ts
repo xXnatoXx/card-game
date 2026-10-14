@@ -1,4 +1,5 @@
 import { RANKS, type Rank } from '@bluff/rules';
+import { sound } from '../audio/sound.js';
 import { t } from '../i18n.js';
 import { socket, store } from '../net.js';
 import type { TableScene } from '../scene/table-scene.js';
@@ -9,6 +10,8 @@ import type { Feed, FeedItem } from './feed.js';
 
 /** Cards per row in your hand before it wraps to a new row. */
 const HAND_ROW = 8;
+/** Pixels between the points checked along a sweep across the hand: well under a card's width. */
+const SWEEP_STEP = 8;
 
 /** The in-game HUD: your hand, building a play (with stacking), the actions, and what just happened. */
 export class GameScreen implements Screen {
@@ -37,6 +40,8 @@ export class GameScreen implements Screen {
   /** A card waiting for the player to pick what to hide it under. */
   private stackPick: string | null = null;
   private menuFor: string | null = null;
+  /** A press held on the hand: the card it began on, whether it is selecting cards or taking them back, and where the pointer was last. */
+  private sweep: { from: string; select: boolean; x: number; y: number } | null = null;
   private wasMyTurn = false;
   private wasInspecting = false;
   private turnTotal = 30_000;
@@ -72,6 +77,10 @@ export class GameScreen implements Screen {
       this.over,
     );
     this.offFeed = feed.on((item) => this.onFeed(item));
+    this.hand.addEventListener('pointerdown', this.onHandDown);
+    this.hand.addEventListener('pointermove', this.onHandMove);
+    this.hand.addEventListener('pointerup', this.onHandUp);
+    this.hand.addEventListener('pointercancel', this.onHandUp);
     addEventListener('keydown', this.onKey);
     this.interval = window.setInterval(() => this.tick(), 100);
   }
@@ -110,13 +119,55 @@ export class GameScreen implements Screen {
     return [...this.stacks].filter(([, under]) => under === id).map(([hidden]) => hidden);
   }
 
-  private toggle(id: string): void {
-    if (this.selected.includes(id)) this.drop(id);
-    else this.selected.push(id);
+  /** Selects a card, or takes it back. Does nothing if it is already that way. */
+  private setSelected(id: string, select: boolean): void {
+    if (this.selected.includes(id) === select) return;
+    if (select) this.selected.push(id);
+    else this.drop(id);
     this.stackPick = null;
     this.menuFor = null;
+    sound.cardTap();
     this.update();
   }
+
+  /** The hand card under a point on screen, if any. */
+  private cardAt(x: number, y: number): string | undefined {
+    const el = document.elementFromPoint(x, y)?.closest<HTMLElement>('.card');
+    return el && this.hand.contains(el) ? el.dataset.id : undefined;
+  }
+
+  // Pressing a card selects it (or takes it back); holding and sweeping does the same to every
+  // card crossed. The hand is redrawn as it changes, so the hand itself keeps hold of the pointer.
+  private readonly onHandDown = (e: PointerEvent): void => {
+    const id = e.button === 0 ? this.cardAt(e.clientX, e.clientY) : undefined;
+    if (!id) return;
+    this.sweep = { from: id, select: !this.selected.includes(id), x: e.clientX, y: e.clientY };
+    this.hand.setPointerCapture(e.pointerId);
+    // A finger may be starting a scroll instead, so its first card waits until it lifts or moves on.
+    if (e.pointerType !== 'touch') this.setSelected(id, this.sweep.select);
+  };
+
+  private readonly onHandMove = (e: PointerEvent): void => {
+    const sweep = this.sweep;
+    if (!sweep) return;
+    // Walk the path since the last event, so a fast sweep doesn't jump over cards.
+    const dx = e.clientX - sweep.x;
+    const dy = e.clientY - sweep.y;
+    const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy) / SWEEP_STEP));
+    for (let i = 1; i <= steps; i++) {
+      const id = this.cardAt(sweep.x + (dx * i) / steps, sweep.y + (dy * i) / steps);
+      if (!id || id === sweep.from) continue;
+      this.setSelected(sweep.from, sweep.select);
+      this.setSelected(id, sweep.select);
+    }
+    sweep.x = e.clientX;
+    sweep.y = e.clientY;
+  };
+
+  private readonly onHandUp = (e: PointerEvent): void => {
+    if (this.sweep && e.type === 'pointerup') this.setSelected(this.sweep.from, this.sweep.select);
+    this.sweep = null;
+  };
 
   private drop(id: string): void {
     this.selected = this.selected.filter((s) => s !== id);
@@ -381,7 +432,7 @@ export class GameScreen implements Screen {
           ...row.map((card) =>
             cardFace(card, {
               class: this.selected.includes(card.id) ? 'selected' : '',
-              onclick: () => this.toggle(card.id),
+              'data-id': card.id,
             }),
           ),
         ),
